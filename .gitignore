@@ -1,0 +1,26 @@
+# Rust build artifacts
+target/
+**/target/
+
+# Backtrace / profiling output
+*.profraw
+perf.data
+perf.data.old
+flamegraph.svg
+
+# Cargo lock is kept for binaries; ignore it only in library crates
+# Cargo.lock
+
+# Editor / IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Misc
+*.log

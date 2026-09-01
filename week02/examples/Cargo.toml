@@ -1,0 +1,8 @@
+[package]
+name = "week02"
+version = "0.1.0"
+edition = "2021"
+
+# Each file in src/bin/ is its own program:
+#   cargo run --bin 01_scalars
+[dependencies]
