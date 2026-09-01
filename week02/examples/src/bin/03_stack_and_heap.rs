@@ -29,12 +29,21 @@ fn main() {
     println!("\n== growth moves the buffer, not the handle ==");
     let mut v: Vec<u32> = Vec::with_capacity(2);
     println!("handle stays at {:p} for the whole loop", &v);
+    let mut cap = v.capacity();
     for i in 0..6 {
         let before = v.as_ptr();
         v.push(i);
-        let after = v.as_ptr();
-        let note = if before == after { "" } else { "  <- reallocated: new buffer, old one freed" };
-        println!("  push({i}) len={} cap={} buf={:p}{note}", v.len(), v.capacity(), after);
+        // Two separate events. `Vec` doubles its capacity when it fills up
+        // (2 -> 4 -> 8); the allocator then decides whether the bigger block
+        // fits where the old one was. A growth that does not move is still a
+        // growth, so watch the `cap` column, not the address.
+        let note = match (v.capacity() != cap, v.as_ptr() != before) {
+            (true, true) => "  <- grew: new buffer, old one copied and freed",
+            (true, false) => "  <- grew: allocator extended it in place, same address",
+            _ => "",
+        };
+        println!("  push({i}) len={} cap={} buf={:p}{note}", v.len(), v.capacity(), v.as_ptr());
+        cap = v.capacity();
     }
 
     println!("\n== &str: a borrowed view, no ownership at all ==");
