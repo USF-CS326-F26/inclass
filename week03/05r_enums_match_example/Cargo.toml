@@ -1,0 +1,12 @@
+[package]
+name = "enums_example"
+version = "0.1.0"
+edition = "2021"
+# so that a bare `cargo run` picks the demo, not src/bin/.
+default-run = "enums_example"
+
+# The worked example lives in src/lib.rs (with its own tests); src/main.rs is
+# the live demo:
+#   cargo test          # the contract, same shape as the 05r exercise
+#   cargo run           # the narrated walkthrough to put on screen
+[dependencies]
