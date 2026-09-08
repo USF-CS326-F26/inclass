@@ -20,7 +20,7 @@ fn main() {
     let b = a;                       // `a` is moved out of, right here
     println!("a's buffer was {a_buf:p}");
     println!("b's buffer is  {:p}   <- identical: nothing was copied", b.as_ptr());
-    // println!("{a}");              // error[E0382]: borrow of moved value: `a`
+    //println!("{a}");              // error[E0382]: borrow of moved value: `a`
     println!("but `a` is no longer a usable name (uncomment the line to see E0382)");
 
     println!("\n== passing to a function moves too ==");
