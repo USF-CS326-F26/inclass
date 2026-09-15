@@ -1,0 +1,574 @@
+{
+ "tool": "pointat/1",
+ "week": "week04",
+ "captured_at": "2026-09-15T14:15:21-07:00",
+ "rustc": "rustc 1.89.0 (29483883e 2025-08-04)",
+ "cargo": "cargo 1.89.0 (c24e10642 2025-06-23)",
+ "os": "macOS 26.6.2 arm64",
+ "build": {
+  "success": true,
+  "stderr": ""
+ },
+ "programs": {
+  "01_array_slice_vec": {
+   "source_sha1": "bdd70bca45afb5a56cbc339b7ae7dae3b43fb75e",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 01_array_slice_vec",
+     "args": [],
+     "output": "== three sizes ==\nsize_of::<[Option<u32>; 8]>() = 64   the table: 8 x 8 bytes\nsize_of::<&[Option<u32>]>()    = 16   a slice: pointer + length\nsize_of::<Vec<Option<u32>>>()  = 24   a Vec: pointer + capacity + length\nthe array IS the storage; the other two point at storage\n\n== the array: fixed, and exactly where it was declared ==\narr           = [Some(1), Some(1), Some(1), None, None, None, None, None]\ncount_free(&arr)        = 5\narr.len()               = 8   fixed by the type, known at compile time\n\n== a slice: a view into the same bytes ==\n&arr[..4]     = [Some(1), Some(1), Some(1), None]\ncount_free(first_half)  = 1\nthe slice starts at 0x16d02dc10; the array starts at 0x16d02dc10 -- same address\nnothing was copied. A slice is where to look and how far.\n\n== a Vec: a copy that lives on the heap and can grow ==\narr.to_vec()  = [Some(1), Some(1), Some(1), None, None, None, None, None]\ncount_free(&v)          = 5\nv.as_ptr()    = 0x103655b90   NOT the array's address: this is the heap\nv.capacity()  = 8   room for 0; the next push must reallocate\nafter 3 pushes: len 11 capacity 16   it asked the allocator\narr.len() is still 8. An array cannot be pushed into.\n\n== indexing is checked, and there is a checked spelling ==\narr.get(2)    = Some(Some(1))\narr.get(8)    = None   one past the end, and no panic\narr[8] would panic: `index out of bounds: the len is 8 but the index is 8`\nthe kernel never indexes with a number a user program chose --\nit checks first, or it uses get()\n\n== the one idea ==\ncount_free(&arr), count_free(&arr[..4]), count_free(&v):\nthe SAME function, because each argument became a &[Option<u32>]\nwrite functions over slices, and every kind of table can call them\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "02_iter_mut_and_enumerate": {
+   "source_sha1": "785c614f0ba2f80c55c099ed0bc0eb74fad88a3c",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 02_iter_mut_and_enumerate",
+     "args": [],
+     "output": "== the table ==\n  [0] -\n  [1] sleeping on 0x10\n  [2] -\n  [3] sleeping on 0x20\n  [4] sleeping on 0x10\n  [5] -\n  [6] -\n  [7] sleeping on 0x10\n\n== iter(): each item is a &Option<usize>; the table is untouched ==\n3 slots sleep on 0x10\n`c` is a &Option<usize>, so the comparison needs `*c` -- or `Some(&t)`\n\n== enumerate(): the index rides along ==\nthey are slots [1, 4, 7]\na kernel almost always needs the INDEX: it is the pid, the fd, the frame\n\n== iter_mut(): each item is a &mut Option<usize>; the write goes in ==\n  woke slot 1\n  woke slot 4\n  woke slot 7\nafter wakeup(0x10):\n  [0] -\n  [1] -\n  [2] -\n  [3] sleeping on 0x20\n  [4] -\n  [5] -\n  [6] -\n  [7] -\n`c` is a &mut Option<usize>. `*c = None` writes into `chan`.\n`c = None` would not compile: c is a reference, not an Option.\n\n== what you may NOT do inside that loop ==\n    for (i, c) in chan.iter().enumerate() {\n        if *c == Some(target) { chan[i] = None; }   // error[E0506]\n    }\n`iter()` holds a shared borrow of the whole table for the whole loop;\n`chan[i] = ..` writes into it while that borrow is alive.\nRUN  ./show-errors.sh e0506\n\n== the off-by-three ==\n  tail slot 0 is asleep -- that is chan[3], not chan[0]\nenumerate counts the thing you handed it, from 0. Slice first,\nand the numbers are the slice's, not the table's.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "03_slot_search": {
+   "source_sha1": "6628d86cc6e3931458214600acc4fd1ff6b2f90a",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 03_slot_search",
+     "args": [],
+     "output": "== an empty cache ==\n  [  - |  - |  - |  - |  - |  -]\n\n== iget fills the lowest free slot ==\niget( 3) -> Some(0)   filled\niget( 7) -> Some(1)   filled\niget( 3) -> Some(0)   hit\niget(11) -> Some(2)   filled\n  [  3 |  7 | 11 |  - |  - |  -]\nthe second iget(3) came back Some(0): same slot, nothing written\n\n== the search, as an adapter ==\ncache.iter().position(|&s| s == Some(7))  = Some(1)\ncache.iter().position(|&s| s == Some(99)) = None\n`position` is `enumerate` + `find` + `map(|(i, _)| i)`, and it stops\nat the first match. It is the for-loop with an early return.\n\n== three spellings of the same search ==\nposition   -> Some(3)\nenumerate  -> Some(3)\nfor loop   -> Some(3)\nsame machine code, near enough. Pick the one that reads as the question.\n\n== the cache fills, and then it is full ==\niget(20) -> Some(3)\niget(21) -> Some(4)\niget(22) -> Some(5)\niget(99) -> None      xv6 panics here; we returned a value\n  [  3 |  7 | 11 | 20 | 21 | 22]\na full cache is not a bug in iget. It is an answer, and the type\nmakes the caller read it before using the slot number.\n\n== why the index matters ==\nin the file-descriptor table the slot index IS the descriptor:\nthe first open() returns 3 because slots 0, 1, 2 are taken.\nclose(1); open(..) returns 1 -- and that is how `cmd > file` works.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "04_adapters_and_closures": {
+   "source_sha1": "18e93effbd0e3028d3fdfb94b24567baf84a6c18",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 04_adapters_and_closures",
+     "args": [],
+     "output": "refs = [Some(3), None, Some(1), Some(2), None, None, Some(1), None]\n\n== filter + count ==\nrefs.iter().filter(|r| r.is_some()).count()  = 4\n\n== flatten: an Option is an iterator of zero or one ==\nrefs.iter().flatten().collect::<Vec<&u16>>() = [3, 1, 2, 1]\nNone contributed nothing; each Some contributed its &u16\n\n== copied: &u16 becomes u16 ==\nrefs.iter().flatten().copied().collect()     = [3, 1, 2, 1]\nthe Vec now OWNS numbers instead of borrowing the table\n\n== map with a captured value ==\nmap(|&r| r as usize * page)                   = [12288, 4096, 8192, 4096]\nthe closure reached `page` from the enclosing scope -- that is a capture\n\n== collect needs to know the container ==\nlet a: Vec<u16> = ...collect()      -> [3, 1, 2, 1]\n...collect::<Vec<u16>>()            -> [3, 1, 2, 1]\nwith neither annotation: error[E0282]: type annotations needed\n`collect` can build a Vec, a String, a HashMap -- it has to be told\n\n== sum ==\nrefs.iter().flatten().sum::<u16>()   = 7\n\n== enumerate + filter_map: the indices of the live slots ==\nenumerate().filter_map(|(i, r)| r.map(|_| i)) = [0, 2, 3, 6]\n`r.map(|_| i)` turns Some(count) into Some(index) and leaves None alone\n\n== lazy: the closure runs only as far as needed ==\nfirst slot with refcount 2: Some(2)\nthe map closure ran 4 times, not 8: find stopped it\n\n== the same thing as a loop ==\nfor / if let / push   -> [3, 1, 2, 1]\nflatten / copied / collect -> [3, 1, 2, 1]\nevery chain is a loop you could have written. The chain has no\nmutable temporaries and no index to get wrong -- and `collect` is\nthe one link that allocates, so it is the one the kernel leaves out.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "05_trait_required_default": {
+   "source_sha1": "65504df1f2f154f3ff380ffeac7295809b0e5d45",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 05_trait_required_default",
+     "args": [],
+     "output": "== three implementers, each wrote ONLY putc ==\nConsole.putln(b\"rv6 boot\")  -> rv6 boot\nRecorder.putln(b\"rv6 boot\") -> buf = \"rv6 boot\\n\"\nTally.putln(b\"rv6 boot\")    -> bytes = 9   8 + the newline\nputln and puts have no impl block anywhere. They are the defaults.\n\n== a default is written once, against a self that does not exist yet ==\n    fn putln(&mut self, s: &[u8]) { self.puts(s); self.putc(b'\\n'); }\nwhen that line was compiled, Console/Recorder/Tally were not in scope.\nit only assumed what the trait promises: that self has putc and puts.\n\n== overriding a default ==\nFast.putln(b\"rv6 boot\") -> bytes = 9, calls = 2   (puts was one call)\nTally would have made 9 calls. Same bytes, same contract, cheaper.\n\n== a unit struct is zero bytes ==\nsize_of::<Console>() = 0\nit exists to be a TYPE, so that `impl Uart for Console` has a home\n\n== you have been using this since week 03 ==\n#[derive(Debug)] on Tally is `impl Debug for Tally`: Tally { bytes: 9 }\n`impl Uart for Recorder` is the same shape, written by hand\n\n== and the standard library's version ==\nwrite!(log, \"pid {} exited {}\", 3, -1) -> \"pid 3 exited -1\"\n    trait Write { fn write_str(&mut self, s: &str) -> fmt::Result; ... }\n07r's `Out::write_str` is this signature without the Result.\nthe kernel's println! is this impl on the UART. That is the whole trick.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "06_generics_and_bounds": {
+   "source_sha1": "e90b35b4dd31cef1c2fc567acf4afc982bc1a3cf",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 06_generics_and_bounds",
+     "args": [],
+     "output": "== one body, three names ==\nrv6 ready\n  [banner compiled for 06_generics_and_bounds::Console]\n  [banner compiled for 06_generics_and_bounds::Recorder]\n  [banner compiled for 06_generics_and_bounds::Tally]\nthree different type names printed by ONE function body.\nthere are three copies of `banner` in this binary, one per U.\n\n== three spellings, one meaning ==\n  [banner_where compiled for 06_generics_and_bounds::Recorder]\n  [banner_impl compiled for some impl Uart]\nrec now holds 30 bytes: every spelling really called Recorder::putc\n\n== what the bound buys ==\n    fn shout<T>(v: T) { v.putc(1) }      // no bound\n    error[E0599]: no method named `putc` found for type parameter `T`\n    help: perhaps you need to restrict type parameter `T` with it: `T: Uart`\ninside a generic body you may use exactly what the bound promises.\nRUN  ./show-errors.sh e0599\n\n== bounds join with + ==\nlargest(&[3u32, 9, 4]) = Some(9)\nlargest(&[7u8, 2])     = Some(7)\nlargest::<u32> and largest::<u8> are two functions. `PartialOrd + Copy`\nis the whole of what the body was allowed to do to a T.\n\n== returning an iterator instead of a Vec ==\nlive(&table) yields: 7 9 2\nno Vec was built. Where a heap is not allowed, return an iterator.\n\n== the price ==\none copy per type: fast calls, inlining, and a bigger binary.\nprogram 07 makes the other trade.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "07_static_vs_dyn": {
+   "source_sha1": "d8ad794657160cd9e03485082fbb363e375780e1",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 07_static_vs_dyn",
+     "args": [],
+     "output": "== two fat pointers, one thin ==\nsize_of::<&Console>()  = 8\nsize_of::<&dyn Uart>() = 16   pointer + vtable pointer\nsize_of::<&[u8]>()     = 16   pointer + length\na slice and a trait object are both `pointer + one more word`.\nthe slice's word is a length; the trait object's is a method table.\n\n== the same three, through one body ==\nrv6 ready\n  [dyn: this body knows only `dyn Uart`]\n  [dyn: this body knows only `dyn Uart`]\n  [dyn: this body knows only `dyn Uart`]\none function. Three targets. The vtable chose putc each time.\n\n== versus the generic ==\nrv6 ready\n  [generic: compiled for 07_static_vs_dyn::Console]\n  [generic: compiled for 07_static_vs_dyn::Tally]\n\n== the coercion point ==\n`let u: &mut dyn Uart = &mut rec;` -- from this line on, u is a fat\npointer and Recorder is gone. rec.0.len() = 11 proves it still wrote.\n\n== what dyn buys: heterogeneous storage ==\ntick\n[&mut dyn Uart; 3] held a Console, a Recorder, and a Tally.\n[&mut U; 3] cannot: U is ONE type, chosen once.\nRecorder now has 16 bytes; Tally counted 25\n\n== the cost ==\neach call: load the method pointer from the vtable, jump through it.\nno inlining across the call. The shell uses dyn at 115200 baud, where\nthat is nothing. The scheduler uses generics, because it runs every tick.\n\n== what a vtable cannot hold ==\na generic method would need one entry per type it is ever called\nwith -- not a number the compiler knows. Such a trait is not\n`dyn compatible`, and using it as `dyn` is error[E0038].\nRUN  ./show-errors.sh e0038\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "08_option_vs_result": {
+   "source_sha1": "b7d49bf89ab41048e94f82654d2d0e905c0f8ec2",
+   "diagnostics": [
+    {
+     "level": "warning",
+     "code": "unused_must_use",
+     "message": "unused `Result` that must be used",
+     "rendered": "warning: unused `Result` that must be used\n   --> src/bin/08_option_vs_result.rs:104:5\n    |\n104 |     alloc_frame(&mut free);\n    |     ^^^^^^^^^^^^^^^^^^^^^^\n    |\n    = note: this `Result` may be an `Err` variant, which should be handled\n    = note: `#[warn(unused_must_use)]` on by default\nhelp: use `let _ = ...` to ignore the resulting value\n    |\n104 |     let _ = alloc_frame(&mut free);\n    |     +++++++\n\n",
+     "spans": [
+      {
+       "ls": 104,
+       "le": 104,
+       "cs": 5,
+       "ce": 27,
+       "primary": true,
+       "label": ""
+      }
+     ]
+    }
+   ],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 08_option_vs_result",
+     "args": [],
+     "output": "free = [false, false, true, true]   (true = available)\n\n== Option: the honest answer may be `nothing` ==\nfirst_free(&free) = Some(2)\nfirst_free(&[false, false]) = None   not an error. There are none.\n\n== Result: a request, and a reason when it is refused ==\nalloc_frame(..) = Ok(2)   free = [false, false, false, true]\nalloc_frame(..) = Ok(3)   free = [false, false, false, false]\nalloc_frame(..) = Err(OutOfFrames)   free = [false, false, false, false]\nthe third call did not get a frame, and the value says why.\n\n== the line between them ==\n    first_free(free).ok_or(AllocError::OutOfFrames)\nis exactly:\n    match first_free(free) {\n        Some(i) => Ok(i),\n        None    => Err(AllocError::OutOfFrames),\n    }\nSome -> Ok, None -> Err(the one you chose). That choice IS the policy.\n\n== Ok(()) : success with nothing to report ==\nfree_frame(&mut free, 2) = Ok(())\nfree_frame(&mut free, 2) = Err(AlreadyFree)   the double free, caught\nfree = [false, false, true, false]\n\n== opening a Result ==\nmatch: got frame 2\nif let: refused\n`match` lists every variant. Add one to AllocError and this match\nstops compiling until you decide what it means here.\n\n== the warning, on purpose ==\nthe next line calls alloc_frame and drops the Result on the floor.\nrustc noticed when this program was built. Scroll up: it said\n    warning: unused `Result` that must be used\nthat is #[must_use] on Result, and it is the -1 nobody checked in C.\nthe honest way to discard one, when there is truly nothing to do:\n    let _ = alloc_frame(&mut free);\n`let _ =` says `I looked, and I chose not to care` -- in the source.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "09_error_enum_and_question_mark": {
+   "source_sha1": "4870445dfd55bfadb1202dcea8b608172ec2e028",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 09_error_enum_and_question_mark",
+     "args": [],
+     "output": "== each ? is a different exit ==\nload(      init) -> Ok(Image { size: 128 })\nload(      nope) -> Err(NotFound)\nload( notes.txt) -> Err(BadMagic)\nload(      huge) -> Err(TooBig)\ninit passed all three checks; the other three each stopped at a\ndifferent `?`, and the Err says which one.\n\n== longhand: what ? expands to ==\nload_longhand agrees on all four. It is 15 lines where load is 4,\nand every one of those `Err(e) => return Err(e)` is the same line.\n\n== ? needs somewhere to return to ==\n    fn sys_exec(name: &str) -> i64 { let img = load(name)?; ... }\n    error[E0277]: the `?` operator can only be used in a function that\n                  returns `Result` or `Option`\na function returning an integer has no Err to return. That is the\nboundary, and the boundary is where ? stops and match begins.\nRUN  ./show-errors.sh e0277\n\n== From: ? converts the error on the way out ==\nrun_cmd(&[])       -> Err(BadArgs)\nrun_cmd(&[\"nope\"]) -> Err(Exec(NotFound))\nrun_cmd(&[\"init\"]) -> Ok(Image { size: 128 })\nload returned Err(ExecError::NotFound). run_cmd returned\nErr(ShellError::Exec(NotFound)). Nobody wrote the wrapping at the\ncall: `?` called From::from, and `impl From<ExecError> for ShellError`\nwas written once.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "10_errno_boundary": {
+   "source_sha1": "90c6b860de4ec380254cf05ab51b6bd5028ccd19",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 10_errno_boundary",
+     "args": [],
+     "output": "== behind the wall: read_fd speaks FdError ==\nread_fd(fd=0)  -> Ok(512)\nread_fd(fd=1)  -> Err(NotReadable)\nread_fd(fd=3)  -> Ok(1536)\nread_fd(fd=4)  -> Err(IsADirectory)\nread_fd(fd=9)  -> Err(BadFd)\n\n== at the wall: sys_read speaks i64 ==\n    fd   sys_read      meaning\n     0        512        bytes\n     1         -9       -EBADF\n     3       1536        bytes\n     4        -21      -EISDIR\n     9         -9       -EBADF\n    -1         -9       -EBADF\none match. Add a variant to FdError and that match stops compiling\nuntil it has a number. Nothing else in the kernel ever spells 21.\n\n== the lossy wall: rv6 today ==\nsys_read_lossy(fd=3) -> 1536\nsys_read_lossy(fd=4) -> -1\nsys_read_lossy(fd=9) -> -1\n`Err(_) => -1` throws the cause away. That is why ulib::Error is\na thin i32 and not an enum: the kernel genuinely does not say more.\n\n== in front of the wall: ulib rebuilds a Result from the number ==\nulib_read(fd=3) -> Ok(1536)\nulib_read(fd=4) -> Err(UlibError(-21))\nResult -> i64 -> Result. Types do not cross the trap; numbers do.\n\n== unwrap, expect, and the dead machine ==\nread_fd(3).expect(..)  = 1536   honest: the table above shows it is open\nread_fd(9).unwrap()    would panic:\n    called `Result::unwrap()` on an `Err` value: BadFd\non your laptop that is one red test. On rv6 it prints `panic` and\nthe machine stops. Rule: Result for what the world did to you,\npanic for what you did to yourself.\n\n== the siblings that do not panic ==\nread_fd(9).unwrap_or(0) = 0\nif let Ok(n) = read_fd(0)  -> 512\nread_fd(4).is_err()     = true\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "11_bytes_vs_strings": {
+   "source_sha1": "4a89e2f980ec903a6e7dba925dade570237840d0",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 11_bytes_vs_strings",
+     "args": [],
+     "output": "== four sizes ==\nsize_of::<u8>()    = 1\nsize_of::<char>()  = 4   a Unicode scalar, not a byte\nsize_of::<&str>()  = 16  pointer + length, plus a promise\nsize_of::<&[u8]>() = 16  pointer + length, no promise\n\n== a byte-string literal ==\nb\"-n\" is a &[u8; 2] = [45, 110], and coerces to &[u8] = [45, 110]\narg == b\"-n\"  -> true   slices compare byte by byte\narg == \"-n\"   -> error[E0277]: can't compare `[u8]` with `str`\n\n== a &str is bytes underneath, and len() counts the bytes ==\n\"café\".len()           = 5   bytes\n\"café\".chars().count() = 4   characters\nas bytes: 0x63 0x61 0x66 0xc3 0xa9\né is two bytes, 0xc3 0xa9, and both have the high bit set.\nevery byte of a multi-byte character is >= 0x80, so a byte-wise\nsearch for b'\\n' (0x0a) can never land inside one. Lines are free.\n\n== from_utf8 is a check, and it can fail ==\nfrom_utf8(b\"hello\")            = Ok(\"hello\")\nfrom_utf8(&[0xff, 0x41])        = Err(Utf8Error { valid_up_to: 0, error_len: Some(1) })\nfrom_utf8(&\"café\".as_bytes()[..4]) = Err(Utf8Error { valid_up_to: 3, error_len: None })\na read() that stops mid-character hands you exactly that last case.\nArgs::get gives bytes. Args::str runs this check for you and says None.\n\n== matching on bytes ==\n\"pid 42\\tstate: run\\n\"\ndigits = 2, blanks = 3, other = 12   (stopped at the newline)\nb'0'..=b'9' is a range of u8. No char, no str, no table.\n\n== parsing a number from bytes, by hand ==\nb'7' - b'0' = 7   digits are consecutive in ASCII\nparse_usize(\"512\") = Some(512)\nparse_usize(\"4096\") = Some(4096)\nparse_usize(\"12x\") = None\nparse_usize(\"\") = None\nparse_usize(\"99999999999999999999\") = None\n`head -n 12x` is a usage error, not a panic, and overflow is not wrap.\n\n== where the newline is ==\nbuf.iter().position(|&b| b == b'\\n') = Some(10)\nthat Option<usize> is the whole of what ulib::Lines does per line:\nfind the newline, hand out &buf[..i], carry on from i + 1.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "12_argv_and_write_all": {
+   "source_sha1": "f41b0a4e737c2cc1eb7edd8dfa30cc86f3e3fa20",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 12_argv_and_write_all",
+     "args": [],
+     "output": "== argv, as the program sees it ==\nargs.len() = 3   that is argc, and argv[0] is the name\n  args.get(0) = Some(\"echo\")\n  args.get(1) = Some(\"hello\")\n  args.get(2) = Some(\"world\")\n  args.get(3) = None   past the end: None, not a crash\n\n== the loop, narrated ==\n  i = 1: no space before it; write args.get(1).unwrap()\n  i = 2: write b\" \" first, then write args.get(2).unwrap()\n  then exactly one b\"\\n\"\nthe space is a SEPARATOR: n words, n - 1 spaces. `i > 1` is that rule.\n\n== run(args) -> \nhello world\nrun returned 0. On the host, main() now calls process::exit(0).\n\n== a console that takes three bytes at a time ==\nbare write(STDOUT, b\"hello world\\n\") -> hel   <- returned Ok(3): three bytes went, and nothing complained\na short write is not an error. It is a number you have to read.\nwrite_all(STDOUT, b\"hello world\\n\")  -> hello world\n   <- Ok(()) after 4 calls to write\nsame twelve bytes, four calls, and `buf = &buf[n..]` between them.\n\n== the Result from write_all ==\nthree things you can do with it inside `fn run(..) -> i32`:\n    write_all(STDOUT, b\"\\n\");            warning: unused Result that must be used\n    write_all(STDOUT, b\"\\n\")?;           error[E0277]: run returns i32, not Result\n    let _ = write_all(STDOUT, b\"\\n\");    the honest discard\nthere is nothing an echo can do if the console is gone. Say so.\n\n== then the number ==\nprocess::exit(0) -- the shell reads it as $?\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    },
+    {
+     "cmd": "cargo run --bin 12_argv_and_write_all -- one two three",
+     "args": [
+      "one",
+      "two",
+      "three"
+     ],
+     "output": "== argv, as the program sees it ==\nargs.len() = 4   that is argc, and argv[0] is the name\n  args.get(0) = Some(\"target/debug/12_argv_and_write_all\")\n  args.get(1) = Some(\"one\")\n  args.get(2) = Some(\"two\")\n  args.get(3) = Some(\"three\")\n  args.get(4) = None   past the end: None, not a crash\n\n== the loop, narrated ==\n  i = 1: no space before it; write args.get(1).unwrap()\n  i = 2: write b\" \" first, then write args.get(2).unwrap()\n  i = 3: write b\" \" first, then write args.get(3).unwrap()\n  then exactly one b\"\\n\"\nthe space is a SEPARATOR: n words, n - 1 spaces. `i > 1` is that rule.\n\n== run(args) -> \none two three\nrun returned 0. On the host, main() now calls process::exit(0).\n\n== a console that takes three bytes at a time ==\nbare write(STDOUT, b\"hello world\\n\") -> hel   <- returned Ok(3): three bytes went, and nothing complained\na short write is not an error. It is a number you have to read.\nwrite_all(STDOUT, b\"hello world\\n\")  -> hello world\n   <- Ok(()) after 4 calls to write\nsame twelve bytes, four calls, and `buf = &buf[n..]` between them.\n\n== the Result from write_all ==\nthree things you can do with it inside `fn run(..) -> i32`:\n    write_all(STDOUT, b\"\\n\");            warning: unused Result that must be used\n    write_all(STDOUT, b\"\\n\")?;           error[E0277]: run returns i32, not Result\n    let _ = write_all(STDOUT, b\"\\n\");    the honest discard\nthere is nothing an echo can do if the console is gone. Say so.\n\n== then the number ==\nprocess::exit(0) -- the shell reads it as $?\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  }
+ },
+ "broken": {
+  "e0038_not_dyn_compatible": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0038_not_dyn_compatible.rs",
+   "rendered": "error[E0038]: the trait `Sink` is not dyn compatible\n  --> e0038_not_dyn_compatible.rs:29:21\n   |\n29 | fn banner(out: &mut dyn Sink) {\n   |                     ^^^^^^^^ `Sink` is not dyn compatible\n   |\nnote: for a trait to be dyn compatible it needs to allow building a vtable\n      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>\n  --> e0038_not_dyn_compatible.rs:14:8\n   |\n12 | trait Sink {\n   |       ---- this trait is not dyn compatible...\n13 |     fn put(&mut self, bytes: &[u8]);\n14 |     fn put_each<I: Iterator<Item = &'static [u8]>>(&mut self, items: I) {\n   |        ^^^^^^^^ ...because method `put_each` has generic type parameters\n   = help: consider moving `put_each` to another trait\n   = help: only type `Console` implements `Sink`; consider using it directly instead.\n\nerror[E0038]: the trait `Sink` is not dyn compatible\n  --> e0038_not_dyn_compatible.rs:34:12\n   |\n34 |     banner(&mut Console);\n   |            ^^^^^^^^^^^^ `Sink` is not dyn compatible\n   |\nnote: for a trait to be dyn compatible it needs to allow building a vtable\n      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>\n  --> e0038_not_dyn_compatible.rs:14:8\n   |\n12 | trait Sink {\n   |       ---- this trait is not dyn compatible...\n13 |     fn put(&mut self, bytes: &[u8]);\n14 |     fn put_each<I: Iterator<Item = &'static [u8]>>(&mut self, items: I) {\n   |        ^^^^^^^^ ...because method `put_each` has generic type parameters\n   = help: consider moving `put_each` to another trait\n   = help: only type `Console` implements `Sink`; consider using it directly instead.\n\nerror: aborting due to 2 previous errors\n\nFor more information about this error, try `rustc --explain E0038`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0038",
+     "message": "the trait `Sink` is not dyn compatible",
+     "rendered": "error[E0038]: the trait `Sink` is not dyn compatible\n  --> e0038_not_dyn_compatible.rs:29:21\n   |\n29 | fn banner(out: &mut dyn Sink) {\n   |                     ^^^^^^^^ `Sink` is not dyn compatible\n   |\nnote: for a trait to be dyn compatible it needs to allow building a vtable\n      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>\n  --> e0038_not_dyn_compatible.rs:14:8\n   |\n12 | trait Sink {\n   |       ---- this trait is not dyn compatible...\n13 |     fn put(&mut self, bytes: &[u8]);\n14 |     fn put_each<I: Iterator<Item = &'static [u8]>>(&mut self, items: I) {\n   |        ^^^^^^^^ ...because method `put_each` has generic type parameters\n   = help: consider moving `put_each` to another trait\n   = help: only type `Console` implements `Sink`; consider using it directly instead.\n\n",
+     "spans": [
+      {
+       "ls": 29,
+       "le": 29,
+       "cs": 21,
+       "ce": 29,
+       "primary": true,
+       "label": "`Sink` is not dyn compatible"
+      },
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 7,
+       "ce": 11,
+       "primary": false,
+       "label": "this trait is not dyn compatible..."
+      },
+      {
+       "ls": 14,
+       "le": 14,
+       "cs": 8,
+       "ce": 16,
+       "primary": false,
+       "label": "...because method `put_each` has generic type parameters"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": "E0038",
+     "message": "the trait `Sink` is not dyn compatible",
+     "rendered": "error[E0038]: the trait `Sink` is not dyn compatible\n  --> e0038_not_dyn_compatible.rs:34:12\n   |\n34 |     banner(&mut Console);\n   |            ^^^^^^^^^^^^ `Sink` is not dyn compatible\n   |\nnote: for a trait to be dyn compatible it needs to allow building a vtable\n      for more information, visit <https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility>\n  --> e0038_not_dyn_compatible.rs:14:8\n   |\n12 | trait Sink {\n   |       ---- this trait is not dyn compatible...\n13 |     fn put(&mut self, bytes: &[u8]);\n14 |     fn put_each<I: Iterator<Item = &'static [u8]>>(&mut self, items: I) {\n   |        ^^^^^^^^ ...because method `put_each` has generic type parameters\n   = help: consider moving `put_each` to another trait\n   = help: only type `Console` implements `Sink`; consider using it directly instead.\n\n",
+     "spans": [
+      {
+       "ls": 34,
+       "le": 34,
+       "cs": 12,
+       "ce": 24,
+       "primary": true,
+       "label": "`Sink` is not dyn compatible"
+      },
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 7,
+       "ce": 11,
+       "primary": false,
+       "label": "this trait is not dyn compatible..."
+      },
+      {
+       "ls": 14,
+       "le": 14,
+       "cs": 8,
+       "ce": 16,
+       "primary": false,
+       "label": "...because method `put_each` has generic type parameters"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 2 previous errors",
+     "rendered": "error: aborting due to 2 previous errors\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0038`.",
+     "rendered": "For more information about this error, try `rustc --explain E0038`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "89328b5037bff4c8b0a931ddd86c12de4d454571"
+  },
+  "e0046_missing_required_method": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0046_missing_required_method.rs",
+   "rendered": "error[E0046]: not all trait items implemented, missing: `put`\n  --> e0046_missing_required_method.rs:24:1\n   |\n13 |     fn put(&mut self, bytes: &[u8]);\n   |     -------------------------------- `put` from trait\n...\n24 | impl Sink for Tally {\n   | ^^^^^^^^^^^^^^^^^^^ missing `put` in implementation\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0046`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0046",
+     "message": "not all trait items implemented, missing: `put`",
+     "rendered": "error[E0046]: not all trait items implemented, missing: `put`\n  --> e0046_missing_required_method.rs:24:1\n   |\n13 |     fn put(&mut self, bytes: &[u8]);\n   |     -------------------------------- `put` from trait\n...\n24 | impl Sink for Tally {\n   | ^^^^^^^^^^^^^^^^^^^ missing `put` in implementation\n\n",
+     "spans": [
+      {
+       "ls": 24,
+       "le": 24,
+       "cs": 1,
+       "ce": 20,
+       "primary": true,
+       "label": "missing `put` in implementation"
+      },
+      {
+       "ls": 13,
+       "le": 13,
+       "cs": 5,
+       "ce": 37,
+       "primary": false,
+       "label": "`put` from trait"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0046`.",
+     "rendered": "For more information about this error, try `rustc --explain E0046`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "d059d1ff7f8ae1fd074058393e04414b0162f011"
+  },
+  "e0277_question_mark_needs_result": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0277_question_mark_needs_result.rs",
+   "rendered": "error[E0277]: the `?` operator can only be used in a function that returns `Result` or `Option` (or another type that implements `FromResidual`)\n  --> e0277_question_mark_needs_result.rs:35:31\n   |\n34 | fn sys_getc(reg: &Registry, name: &str) -> i64 {\n   | ---------------------------------------------- this function should return `Result` or `Option` to accept `?`\n35 |     let dev = reg.lookup(name)?;\n   |                               ^ cannot use the `?` operator in a function that returns `i64`\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0277`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0277",
+     "message": "the `?` operator can only be used in a function that returns `Result` or `Option` (or another type that implements `FromResidual`)",
+     "rendered": "error[E0277]: the `?` operator can only be used in a function that returns `Result` or `Option` (or another type that implements `FromResidual`)\n  --> e0277_question_mark_needs_result.rs:35:31\n   |\n34 | fn sys_getc(reg: &Registry, name: &str) -> i64 {\n   | ---------------------------------------------- this function should return `Result` or `Option` to accept `?`\n35 |     let dev = reg.lookup(name)?;\n   |                               ^ cannot use the `?` operator in a function that returns `i64`\n\n",
+     "spans": [
+      {
+       "ls": 35,
+       "le": 35,
+       "cs": 31,
+       "ce": 32,
+       "primary": true,
+       "label": "cannot use the `?` operator in a function that returns `i64`"
+      },
+      {
+       "ls": 34,
+       "le": 34,
+       "cs": 1,
+       "ce": 47,
+       "primary": false,
+       "label": "this function should return `Result` or `Option` to accept `?`"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0277`.",
+     "rendered": "For more information about this error, try `rustc --explain E0277`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "9c18d00d8e2370ac3a67b161e424f6e209bbd14f"
+  },
+  "e0308_option_is_not_result": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0308_option_is_not_result.rs",
+   "rendered": "error[E0308]: mismatched types\n  --> e0308_option_is_not_result.rs:36:9\n   |\n32 |     fn lookup(&self, name: &str) -> Result<Device, DevError> {\n   |                                     ------------------------ expected `Result<Device, DevError>` because of return type\n...\n36 |         self.find(name)\n   |         ^^^^^^^^^^^^^^^ expected `Result<Device, DevError>`, found `Option<Device>`\n   |\n   = note: expected enum `Result<Device, DevError>`\n              found enum `Option<Device>`\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0308",
+     "message": "mismatched types",
+     "rendered": "error[E0308]: mismatched types\n  --> e0308_option_is_not_result.rs:36:9\n   |\n32 |     fn lookup(&self, name: &str) -> Result<Device, DevError> {\n   |                                     ------------------------ expected `Result<Device, DevError>` because of return type\n...\n36 |         self.find(name)\n   |         ^^^^^^^^^^^^^^^ expected `Result<Device, DevError>`, found `Option<Device>`\n   |\n   = note: expected enum `Result<Device, DevError>`\n              found enum `Option<Device>`\n\n",
+     "spans": [
+      {
+       "ls": 36,
+       "le": 36,
+       "cs": 9,
+       "ce": 24,
+       "primary": true,
+       "label": "expected `Result<Device, DevError>`, found `Option<Device>`"
+      },
+      {
+       "ls": 32,
+       "le": 32,
+       "cs": 37,
+       "ce": 61,
+       "primary": false,
+       "label": "expected `Result<Device, DevError>` because of return type"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0308`.",
+     "rendered": "For more information about this error, try `rustc --explain E0308`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "3f90894810127a9f7ab91765478a0f7454a91666"
+  },
+  "e0506_assign_while_iterating": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0506_assign_while_iterating.rs",
+   "rendered": "error[E0506]: cannot assign to `table[_]` because it is borrowed\n  --> e0506_assign_while_iterating.rs:17:13\n   |\n15 |     for (i, slot) in table.iter().enumerate() {\n   |                      ------------------------\n   |                      |\n   |                      `table[_]` is borrowed here\n   |                      borrow later used here\n16 |         if slot.is_some() {\n17 |             table[i] = None;\n   |             ^^^^^^^^^^^^^^^ `table[_]` is assigned to here but it was already borrowed\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0506`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0506",
+     "message": "cannot assign to `table[_]` because it is borrowed",
+     "rendered": "error[E0506]: cannot assign to `table[_]` because it is borrowed\n  --> e0506_assign_while_iterating.rs:17:13\n   |\n15 |     for (i, slot) in table.iter().enumerate() {\n   |                      ------------------------\n   |                      |\n   |                      `table[_]` is borrowed here\n   |                      borrow later used here\n16 |         if slot.is_some() {\n17 |             table[i] = None;\n   |             ^^^^^^^^^^^^^^^ `table[_]` is assigned to here but it was already borrowed\n\n",
+     "spans": [
+      {
+       "ls": 15,
+       "le": 15,
+       "cs": 22,
+       "ce": 27,
+       "primary": false,
+       "label": "`table[_]` is borrowed here"
+      },
+      {
+       "ls": 17,
+       "le": 17,
+       "cs": 13,
+       "ce": 28,
+       "primary": true,
+       "label": "`table[_]` is assigned to here but it was already borrowed"
+      },
+      {
+       "ls": 15,
+       "le": 15,
+       "cs": 22,
+       "ce": 46,
+       "primary": false,
+       "label": "borrow later used here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0506`.",
+     "rendered": "For more information about this error, try `rustc --explain E0506`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "6fd499fbbc7b014a2927d5d99ada596e337dff87"
+  },
+  "e0596_iter_mut_behind_shared_ref": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0596_iter_mut_behind_shared_ref.rs",
+   "rendered": "error[E0596]: cannot borrow `*table` as mutable, as it is behind a `&` reference\n  --> e0596_iter_mut_behind_shared_ref.rs:11:22\n   |\n11 |     for (i, slot) in table.iter_mut().enumerate() {\n   |                      ^^^^^ `table` is a `&` reference, so the data it refers to cannot be borrowed as mutable\n   |\nhelp: consider changing this to be a mutable reference\n   |\n10 | fn alloc_slot(table: &mut [Option<u32>], pid: u32) -> Option<usize> {\n   |                       +++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0596`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0596",
+     "message": "cannot borrow `*table` as mutable, as it is behind a `&` reference",
+     "rendered": "error[E0596]: cannot borrow `*table` as mutable, as it is behind a `&` reference\n  --> e0596_iter_mut_behind_shared_ref.rs:11:22\n   |\n11 |     for (i, slot) in table.iter_mut().enumerate() {\n   |                      ^^^^^ `table` is a `&` reference, so the data it refers to cannot be borrowed as mutable\n   |\nhelp: consider changing this to be a mutable reference\n   |\n10 | fn alloc_slot(table: &mut [Option<u32>], pid: u32) -> Option<usize> {\n   |                       +++\n\n",
+     "spans": [
+      {
+       "ls": 11,
+       "le": 11,
+       "cs": 22,
+       "ce": 27,
+       "primary": true,
+       "label": "`table` is a `&` reference, so the data it refers to cannot be borrowed as mutable"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0596`.",
+     "rendered": "For more information about this error, try `rustc --explain E0596`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "a8fc2350d22a9c79525472ec737741d4e6a3e2c9"
+  },
+  "e0599_no_bound_no_method": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0599_no_bound_no_method.rs",
+   "rendered": "error[E0599]: no method named `put` found for mutable reference `&mut S` in the current scope\n  --> e0599_no_bound_no_method.rs:25:14\n   |\n25 |         sink.put(line);\n   |              ^^^ method not found in `&mut S`\n   |\n   = help: items from traits can only be used if the type parameter is bounded by the trait\nhelp: the following trait defines an item `put`, perhaps you need to restrict type parameter `S` with it:\n   |\n23 | fn log_all<S: Sink>(sink: &mut S, lines: &[&[u8]]) {\n   |             ++++++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0599`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0599",
+     "message": "no method named `put` found for mutable reference `&mut S` in the current scope",
+     "rendered": "error[E0599]: no method named `put` found for mutable reference `&mut S` in the current scope\n  --> e0599_no_bound_no_method.rs:25:14\n   |\n25 |         sink.put(line);\n   |              ^^^ method not found in `&mut S`\n   |\n   = help: items from traits can only be used if the type parameter is bounded by the trait\nhelp: the following trait defines an item `put`, perhaps you need to restrict type parameter `S` with it:\n   |\n23 | fn log_all<S: Sink>(sink: &mut S, lines: &[&[u8]]) {\n   |             ++++++\n\n",
+     "spans": [
+      {
+       "ls": 25,
+       "le": 25,
+       "cs": 14,
+       "ce": 17,
+       "primary": true,
+       "label": "method not found in `&mut S`"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0599`.",
+     "rendered": "For more information about this error, try `rustc --explain E0599`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "88c19893e490c8f7a9b390581ba161189e6d1fb3"
+  }
+ }
+}

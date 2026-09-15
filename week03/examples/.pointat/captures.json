@@ -1,0 +1,561 @@
+{
+ "tool": "pointat/1",
+ "week": "week03",
+ "captured_at": "2026-09-15T14:15:18-07:00",
+ "rustc": "rustc 1.89.0 (29483883e 2025-08-04)",
+ "cargo": "cargo 1.89.0 (c24e10642 2025-06-23)",
+ "os": "macOS 26.6.2 arm64",
+ "build": {
+  "success": true,
+  "stderr": ""
+ },
+ "programs": {
+  "01_structs": {
+   "source_sha1": "dbf647416100826bee23c47a3c2d88410a65e9f1",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 01_structs",
+     "args": [],
+     "output": "== building one ==\nuart.base      = 0x10000000\nuart.chars_out = 0\n\n== field init shorthand ==\nConsole { base } means Console { base: base } -> 0x10010000\n\n== a struct is its fields, back to back ==\nsize_of::<Console>()   = 24\n3 x size_of::<usize>() = 24\nno header, no vtable, no allocation -- the value IS the bytes\n\n== which is why an array of them is exactly N times as big ==\nsize_of::<[Console; 4]>() = 96\nfirst element at 0x16d459e18\nnext  element at 0x16d459e30   <- 24 bytes further on\n\n== structs nest by value ==\nsize_of::<Driver>() = 40   (= Console 24 + Stats 16)\ndriver         at 0x16d459fa8\ndriver.console at 0x16d459fb8\ndriver.stats   at 0x16d459fa8\nboth sit INSIDE the driver's own 40 bytes -- no pointer, no\nsecond allocation, nothing to dereference\nwhich one comes first is the compiler's choice (program 06)\nreads = 12, writes = 4\n\n== mutation needs `mut` on the binding ==\nafter two updates: Stats { reads: 1, writes: 2 }\n\n== private fields are how a module protects itself ==\ncount = 0\n`count_field` is private, so the only way in is a method\nthat is how a kernel module stops the rest of the kernel\nfrom corrupting its data behind its back\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "02_impl_and_self": {
+   "source_sha1": "0690f1bbd7048384101de4d23c3c0f29f0ab6e05",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 02_impl_and_self",
+     "args": [],
+     "output": "== associated function: `::`, because there is no value yet ==\nStats::new()      -> Stats { reads: 0, writes: 0 }\nStats::started(9) -> Stats { reads: 9, writes: 0 }\n\n== &self reads; the caller keeps the value ==\ns.total()   = 0\ns.total()   = 0   <- called twice, still ours\ns.is_idle() = true\n\n== &mut self mutates, under an exclusive borrow ==\nafter 2 reads and 1 write: Stats { reads: 2, writes: 1 }, total 3\nwhile `record_read` runs, no other reference to `s` exists\n\n== self by value consumes -- unless the type is Copy ==\ns.scaled(2) = Stats { reads: 4, writes: 2 }\ns is still usable: Stats { reads: 2, writes: 1 }   <- only because Stats is Copy\n\n== ... and consuming is sometimes exactly what you want ==\ns.into_report() -> (2, 1, 3)\n`into_report` takes self to say: this Stats is finished with\n\n== a type that is NOT Copy: self really does take it away ==\ndev.name_len() = 5   (&self: borrows)\ndev.name_len() = 5   (still ours)\ndev.into_name() -> \"uart0\"\n\n== Self is the type's own name, inside its impl block ==\n`-> Self` and `-> Stats` mean the same thing in there\nchained: Stats { reads: 2, writes: 1 }\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "03_derive_and_copy": {
+   "source_sha1": "3db8e9cff7ad1e9737ffce4ab2a9d3895838dd5f",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 03_derive_and_copy",
+     "args": [],
+     "output": "== Debug: what {:?} and assert_eq! print ==\n{:?}  -> Ticks { count: 42, hz: 10000000 }\n{:#?} ->\nTicks {\n    count: 42,\n    hz: 10000000,\n}\n\n== PartialEq: == field by field ==\nt == a  -> true\nt == b  -> false\nnothing was written by hand; the derive compares every field\n\n== Copy: assignment duplicates ==\nfirst  = Ticks { count: 999, hz: 100 }  at 0x16b611e88\nsecond = Ticks { count: 1, hz: 100 }    at 0x16b611e98   <- an independent value\n\n== which is what makes a by-value method callable twice ==\nms.seconds()     = 3\nms.half()        = Ticks { count: 15000000, hz: 10000000 }\nms.seconds()     = 3   <- `seconds(self)` copied, it did not move\ndrop the Copy derive and the second call is error[E0382]\n\n== a type that owns something moves instead ==\nn1.label at 0x1050fdd10\nn2.label at 0x1050fdb90   <- clone() allocated a second buffer\nmoved = Named { label: \"timer\" }\n\n== Copy XOR Drop ==\nHeld { id: 7 } created\n  drop(Held { id: 7 })   <- released at the closing brace\nHeld has a destructor, so it can never derive Copy:\n  error[E0184]: the trait `Copy` cannot be implemented for this\n                type; the type has a destructor\ntry it -- add #[derive(Clone, Copy)] to `Held` and rebuild\n\n**RUN** ../examples/show-errors.sh e0184\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "04_newtype": {
+   "source_sha1": "e17b1c9adc73fd3c698cc4a1d911b7829e0daa3b",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 04_newtype",
+     "args": [],
+     "output": "== an alias buys nothing ==\ntype RawBlock = u32; type RawCount = u32;\na block number assigned straight into a byte count: 7\nrustc has no opinion, because they are the same type\n\n== a newtype does ==\nBlockNo(7)     -> BlockNo(7)\nByteCount(512) -> ByteCount(512)\nread_block(block) is fine; read_block(count) is E0308\nread_block(BlockNo(7)) -> reading disk block 7\n\n== and costs nothing at run time ==\nsize_of::<u32>()       = 4\nsize_of::<BlockNo>()   = 4   <- repr(transparent)\nsize_of::<[BlockNo; 8]>() = 32\nsame size, same alignment, same register, same instructions\n\n== reach the value by position: self.0 ==\nblock.0        = 7\nblock.next()   = BlockNo(8)\ncount.blocks() = 1   (512-byte blocks)\n\n== a newtype over packed bits ==\nMode::new(0o7, 0o5, 0o5) = 0o755   (0b111101101)\nmode.owner() = 0o7\nmode.group() = 0o5\nmode.other() = 0o5\nmode.owner_can_write() = true\n\n== packing is a shift and an OR; unpacking is a shift and a mask ==\nbuild : (owner << 6) | (group << 3) | other\nread  : (self.0 >> 6) & 0o7\nread-only 0o444: owner_can_write() = false\n\n== the deliberate reinterpretation is spelled out ==\nBlockNo -> u32 -> BlockNo: BlockNo(7)\nthe conversions still exist; now they are visible\n\n**RUN** ../examples/show-errors.sh e0308\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "05_const_fn": {
+   "source_sha1": "36817d31ce2c0aa36832ff79b29453c508a1bba2",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 05_const_fn",
+     "args": [],
+     "output": "== the same function, both ways ==\nKERNEL_STACK = kib(8) = 8192   <- computed by rustc\nkib(4) = 4096   <- computed at run time\n`const fn` does not mean `only at compile time`\n\n== a const context forces the evaluation ==\nconst BLOCKS: u32 = blocks_for(5000) = 10\nno divide instruction exists anywhere in this binary for it\nblocks_for(5000) at run time = 10\n\n== an array length is a const context ==\nconst BUF_LEN: usize = kib(1) / 8 = 128\n[0u8; BUF_LEN] is 128 bytes on the stack\nsize_of::<[u8; BUF_LEN]>() = 128\n\n== a whole table, initialized with no code running ==\nstatic SLOTS: [Slot; 8] = [const { Slot::new() }; 8];\nSLOTS[0]  = Slot { owner: 0, busy: false }\nSLOTS[7]  = Slot { owner: 0, busy: false }\nall 8 of them were written into the executable by the compiler\nsize_of::<[Slot; 8]>() = 64 bytes reserved at link time\n\n== ... and a const one, built the same way ==\nconst READY: Slot = Slot::started(3);\nREADY = Slot { owner: 3, busy: true }   <- a literal in the image, not a call\nREADY.is_busy() = true\n\n== what C had to do instead ==\nC static initializers allow constants only: `= 0` yes, a call no.\nHence the pile of xxx_init() routines whose whole job is to fill\nin what the language could not. C++ answered with constexpr in\n2011; Rust's const fn stabilized in 2018.\n\n== what you may write inside a const fn ==\n  arithmetic, comparisons, if, match, loop, other const fns\n  NOT: allocate, call a non-const fn, deref a raw pointer\ntry it: put `read_a_number()` in a const and read E0015\n\n**RUN** ../examples/show-errors.sh e0015\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "06_repr_c": {
+   "source_sha1": "8462ac472485aeec8a1ce3b9e6e40a637bf4b98f",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 06_repr_c",
+     "args": [],
+     "output": "== the same three fields, two representations ==\nsize_of::<RustHeader>() = 16   align 8\nsize_of::<CHeader>()    = 24   align 8\ndeclared identically; only the attribute differs\n\n== where the fields actually landed ==\n            repr(Rust)   #[repr(C)]\n  flag       offset 10   offset  0\n  addr       offset  0   offset  8\n  count      offset  8   offset 16\nthe left column is today's answer on this compiler, and a\npromise about nothing; the right column is a contract\n\n== why the C rules cost bytes ==\n`addr` is 8-aligned, so it cannot start at offset 1:\n  flag at 0, then 7 bytes of padding, then addr at 8,\n  count at 16, then 6 more bytes so the whole struct is 8-aligned\nrepr(Rust) is free to put the most-aligned field first instead\n\n== order the fields yourself and the padding goes away ==\nsize_of::<PackedWell>() = 16   (#[repr(C)], big fields first)\n  addr  offset 0\n  count offset 8\n  flag  offset 10\n\n== a struct assembly reads by numeric offset ==\nsize_of::<SavedRegs>() = 32   = 4 x 8\n  ra offset 0   <- `ld ra, 0(a1)`\n  sp offset 8   <- `ld sp, 8(a1)`\n  s0 offset 16\n  s1 offset 24\nra = 0x80001234, sp = 0x80100000\n\n== this failure is silent at compile time ==\nDelete #[repr(C)] from SavedRegs and NOTHING breaks in the build.\nThe assembly is still valid; it may simply store the return\naddress into whatever field now sits at offset 0. The first\nsymptom is a jump to a garbage address on the next switch.\nWorse: all four fields are u64, so today's compiler has no\nreason to reorder them and it would probably keep working.\nThe bug is not that it breaks -- it is that nothing PROMISES\nit will not.\n\n== the three you will meet ==\n  repr(Rust)             none; optimize freely     everything internal\n  #[repr(C)]             source order, C alignment assembly, hardware, disk\n  #[repr(transparent)]   identical to the one field newtypes (program 04)\nsize_of::<Wrapped>() = 8   == size_of::<u64>() = 8\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "07_drop_guard": {
+   "source_sha1": "a565e6d483b1d52c69c04541dc24292c43d1c259",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 07_drop_guard",
+     "args": [],
+     "output": "== drop runs at the closing brace ==\n  new  first\n  new  second\n  both alive\n  drop second\n  drop first\ndropped in REVERSE declaration order -- second, then first\n\n== a guard: the resource is the value's lifetime ==\nheld before  = false\n  acquire proc table\nheld inside  = true\n  ... critical section ...\n  release proc table\nheld after   = false   <- nobody called release()\n\n== the borrow order inside `acquire` is the whole trick ==\n  read/write through the &mut FIRST,\n  THEN move it into the struct -- after that the guard owns it\ndo it the other way round and you get E0499 or E0502\n\n== release early, by consuming the guard ==\n  acquire proc table\nheld inside  = true\n  release proc table\nheld after release() = false   <- and the borrow ended too\n`pub fn release(self) {}` -- an empty body that frees something.\nstd's `drop` is exactly that: pub fn drop<T>(_x: T) { }\n\n== it runs on the paths you forgot ==\nearly_return(true):\n  new  scoped\n    bailing out early\n  drop scoped\nearly_return(false):\n  new  scoped\n    ran to the end\n  drop scoped\none release site in the source, every path covered\n\n== moving the value moves the duty to release it ==\n  new  moved\n  handing it to a function that keeps it:\n  consume got moved\n  drop moved\n  ... it was dropped inside `consume`, not here\n\n== Copy XOR Drop, one more time ==\nA guard can never be Copy. A copy would release once per copy,\nwhich is the double free wearing a hat:\n  error[E0184]: the trait `Copy` cannot be implemented for this\n                type; the type has a destructor\nThis is the shape of a spinlock guard -- swap the bool for a\nlock word and Drop for the unlock, and a kernel cannot leave a\nlock held.\n\n**RUN** ../examples/show-errors.sh e0184\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "08_enums": {
+   "source_sha1": "04e7dc4a314f2028cafd398c18ca8280411c32a1",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 08_enums",
+     "args": [],
+     "output": "== unit variants: a closed set of names ==\nLevel::Machine = Machine, Level::User = User\na == b -> false\nsize_of::<Level>() = 1   <- 3 variants fit in one byte\nthere is no Level equal to 47; the type has three values\n\n== variants that carry data ==\nPageFault { addr: 0x80001000 }\nSyscall(63)\nTimer\none value answers two questions at once: what happened, and with what\n\n== how they are built ==\n  Trap::Timer                        no fields\n  Trap::Syscall(63)                  tuple fields, built like a call\n  Trap::PageFault { addr: 0x8000 }    named fields, built like a struct\n\n== the layout: a tag plus the biggest payload ==\nsize_of::<Trap>()   = 16\nsize_of::<usize>()  = 8   <- the largest payload\nthe tag rides along, rounded up for alignment\nsize_of::<[Trap; 4]>() = 64\n\n== a C API says this with an int and an out-parameter ==\n  int  cause;\n  long extra;      /* meaningful for SOME causes. which? */\nHere the pairing is enforced: a Timer has no address to reach.\n\n== Option<T> is just an enum the library wrote ==\n  enum Option<T> { Some(T), None }\nSome(7) = Some(7), None = None\nsize_of::<u32>()         = 4\nsize_of::<Option<u32>>() = 8   <- 4 bytes + a tag, aligned\n\n== niche optimization: sometimes the tag is free ==\nsize_of::<&u8>()         = 8\nsize_of::<Option<&u8>>() = 8   <- SAME SIZE\na reference is never null, so all-zeroes is a bit pattern it can\nnever hold -- and that unused pattern becomes `None`\n\n== enums are how a kernel writes a closed set ==\n  Timer                                  kernel-handled: true\n  Syscall(63)                            kernel-handled: true\n  PageFault { addr: 0x80001000 }         kernel-handled: true\n  Illegal                                kernel-handled: false\nprogram 09 is the `match` that reads them\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "09_match": {
+   "source_sha1": "6de7ba87e256d8ff54f0dc6e6a8cac6bd93d7c43",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 09_match",
+     "args": [],
+     "output": "== match is an expression ==\n  Timer                                  cost 1\n  Syscall(63)                            cost 63\n  PageFault { addr: 0x80001000 }         cost 100\n  Illegal                                cost 0\n\n== the four pattern features you need ==\n  Timer                                  no payload to read\n  Syscall(63)                            has a number, see below\n  PageFault { addr: 0x80001000 }         has an address, ignoring it\n  Illegal                                no payload to read\n\n== binding the payload ==\n  Timer                                  no detail\n  Syscall(63)                            syscall number 63\n  PageFault { addr: 0x80001000 }         faulting address 0x80001000\n  Illegal                                no detail\n\n== exhaustiveness ==\nDelete one arm and the program does not compile:\n  error[E0004]: non-exhaustive patterns:\n                `Trap::Illegal` not covered\nIts value is not in the match you are writing now, but in the\ntwelve you will not remember when you change the enum next month.\n\n== the `_` trap ==\n`_` switches the check off forever: a catch-all covers variants\nthat do not exist yet, so adding one produces no error and no\nwarning. `is_illegal_wrong` below is right today, by luck.\n  Timer                                  careful false lazy false\n  Syscall(63)                            careful false lazy false\n  PageFault { addr: 0x80001000 }         careful false lazy false\n  Illegal                                careful true  lazy true\nAdd a fifth variant and only `is_illegal` breaks the build.\n\n== ... and when `_` is right ==\n  syscall 1     -> 0\n  syscall 63    -> 5\n  syscall 64    -> 5\n  syscall 9999  -> -1\n`_ => -1` here is correct: any integer may arrive.\n\n== guards: an `if` on an arm ==\n  Timer                                  timer\n  Syscall(63)                            known syscall\n  PageFault { addr: 0x80001000 }         kernel page fault\n  Illegal                                illegal instruction\nA failing guard does NOT leave the match -- matching CONTINUES\nwith the next arm. That fall-through is the whole point; testing\ninside the arm body loses it and forces you to restate the\nfailure path by hand.\nGuarded arms do not count toward exhaustiveness, so a match\nresting on one still needs a fallback.\n\n== matching a pair, to test two values at once ==\n  User         Syscall(63)                -> service it\n  Supervisor   Syscall(63)                -> the kernel called itself?!\n  User         Illegal                    -> kill the process\nthat is how a transition table becomes one readable block\n\n== if let: a one-arm match ==\n  if let  -> faulted at 0x80001000\n\n== let ... else: bind, or bail out ==\n  describe_syscall(Trap::Syscall(63)) = Some(\"syscall 63\")\n  describe_syscall(Trap::Timer)       = None\n\n== matches!: a match that answers yes or no ==\n  Timer                                  is a fault: false\n  Syscall(63)                            is a fault: false\n  PageFault { addr: 0x80001000 }         is a fault: true\n  Illegal                                is a fault: false\n\n**RUN** ../examples/show-errors.sh e0004\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "10_option": {
+   "source_sha1": "7f81996c725acfc4fda2b1288d34c9cff8b8e5c0",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 10_option",
+     "args": [],
+     "output": "== a function that might have no answer says so in its type ==\nfind_device(&table, 1) = Some(Device { major: 1, name: \"console\", driver: Some(\"uart\") })\nfind_device(&table, 9) = None\nthe second one is not an error and not a crash -- it is `None`\n\n== opening one up: match ==\n  major 1 is console\n  no such device\n\n== ... or if let, when only one case matters ==\n  found disk at major 2\n\n== ... or let ... else, to bind or bail ==\n  device_name(&table, 1) = Some(\"console\")\n  device_name(&table, 9) = None\n\n== the combinators worth knowing ==\n                         major 1 (present)   major 9 (absent)\n  .is_some()             true                false\n  .map(|d| d.name)       Some(\"console\")     None\n  .and_then(|d| d.drv)   Some(\"uart\")        None\n  ... .unwrap_or(\"-\")    console             -\n  ... .ok_or(-1)         Ok(1)               Err(-1)\n`map` transforms what is there and leaves `None` alone;\n`and_then` is for when the step itself may also come up empty;\n`unwrap_or` supplies a fallback; `ok_or` turns absence into an error.\n\n== `?` on an Option: return None early ==\n  driver_of(&table, 1) = Some(\"uart\")\n  driver_of(&table, 3) = None   <- device exists, no driver\n  driver_of(&table, 9) = None   <- no device at all\n\n== Option is how you say `nothing is available` honestly ==\n  took 12, 2 left\n  took 11, 1 left\n  took 10, 0 left\n  nothing left -- and the caller cannot ignore that\ncompare: C returns 0 or -1 or NULL and hopes you check\n\n== the cost ==\nsize_of::<u32>()          = 4\nsize_of::<Option<u32>>()  = 8   <- 4 bytes plus a tag, aligned\nsize_of::<&u32>()         = 8\nsize_of::<Option<&u32>>() = 8   <- FREE: null is the niche\na reference can never be all-zeroes, so that pattern IS `None`\n\n== what you should almost never write ==\n  .unwrap()   panics on None -- in a kernel that halts the machine\n  .expect(\"\") the same, with a message\nUse them in tests and in code where None is genuinely impossible.\nEverywhere else, `match`, `if let`, `unwrap_or`, or `?`.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "11_slices": {
+   "source_sha1": "2250ebeb353215597b7eb2acfe7794cb85ddcc98",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 11_slices",
+     "args": [],
+     "output": "== the three types ==\narray  [107, 101, 114, 110, 101, 108, 0, 0]  at 0x16f4ed4c8\nvec    [107, 101, 114, 110]      at 0x1009b1d30   <- heap\nslice  [107, 101, 114, 110, 101, 108]  at 0x16f4ed4c8   <- points into the array\n\n== a slice is a fat pointer ==\nsize_of::<&u8>()        =  8   thin\nsize_of::<&[u8; 8]>()   =  8   thin: the 8 is in the type\nsize_of::<&[u8]>()      = 16   FAT: address + length\nsize_of::<[u8; 8]>()    =  8   the data itself\nsize_of::<Vec<u8>>()    = 24   ptr + len + cap\n&[u8] could point at three elements or three million\n\n== making slices from ranges ==\n&arr[..]     [107, 101, 114, 110, 101, 108, 0, 0]\n&arr[..3]    [107, 101, 114]\n&arr[3..]    [110, 101, 108, 0, 0]\n&arr[2..5]   [114, 110, 101]\n\n== the prefix that holds real data ==\nread_into filled 6 of 16 bytes\n&buf[..]   -> 16 bytes, most of them stale\n&buf[..n]  -> 6 bytes, all of them real\ntext = \"kernel\"\nthe slice says `this many of those` without a second variable\nthat can drift out of sync\n\n== one function, every container ==\nchecksum(&arr)      = 641\nchecksum(&owned)    = 432\nchecksum(&arr[2..5]) = 325\narrays and Vecs convert to slices automatically\nwrite `&[T]` to read and `&mut [T]` to write, and one signature\nserves a table of any size\n\n== &mut [T] is an EXCLUSIVE borrow of the whole run ==\nafter fill: [255, 255, 255, 255, 255, 255, 255, 255]\nsplit_at_mut: two writers, provably disjoint -> [1, 255, 255, 255, 2, 255, 255, 255]\n\n== indexing is checked ==\ntable[i]      panics on a bad index      -- i is yours, provably in range\ntable.get(i)  returns None               -- out of range is normal\narr.get(3)  = Some(110)\narr.get(99) = None\nin RISC-V terms `table[i]` is three extra instructions:\n    bgeu  a1, t0, .Lpanic     unsigned, so it catches both ends\n    slli  t1, a1, 3\n    add   t1, a0, t1\na branch that is never taken, and so predicted perfectly\n\n== validate untrusted indices at the boundary ==\n  get_file(1) = Some(\"stdout\")\n  get_file(99) = None\nA panic in a kernel is not a failed test: the handler prints and\nhalts the machine. A user program that can panic the kernel with\none bad system-call argument owns a denial of service. Check\nwhere the number ENTERS, once, and index freely after that.\nIn C the missing check reads into a neighbouring process.\n\n**RUN** ../examples/show-errors.sh e0080\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "12_tables_and_iterators": {
+   "source_sha1": "267f39021744fcc49867e3d04f3c02081d3cd8ff",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 12_tables_and_iterators",
+     "args": [],
+     "output": "== a fixed table costs what it costs, always ==\nsize_of::<DevEntry>()       = 32\nsize_of::<[DevEntry; 8]>() = 256   = 8 x 32\nreserved at link time, whether one device is live or 8\nyou always pay for the worst case -- and in exchange the worst\ncase can never surprise you\n\n== iter(): each item is &T, the table is untouched ==\n  major 1   console    reads 120\n  major 2   disk       reads 4096\n  major 3   null       reads 0\n  major 0   -          reads 0\n  major 0   -          reads 0\n  major 0   -          reads 0\n  major 0   -          reads 0\n  major 0   -          reads 0\n\n== enumerate(): kernels care WHERE a thing is ==\n  slot 0 holds major 1\n  slot 1 holds major 2\n  slot 2 holds major 3\nenumerate counts from 0 regardless of what it counts:\non `table[3..].iter().enumerate()` the numbers are NOT the\ntable's indices -- a classic off-by-three\n\n== position(): the index of the first match ==\nposition(major == 2) = Some(1)\nposition(major == 9) = None\n\n== find(): the first matching item ==\nfound disk at major 2\n\n== any() / all() / count() / filter() / map() ==\nany(reads > 100)  = true\nall(reads < 1000) = false\ncount(live)       = 3\ntotal reads       = 4216\nbusiest           = Some(\"disk\")\n\n== iter_mut(): each item is &mut T, modified in place ==\nafter one pass: [121, 4097, 1]\nwhich one you may use is decided by your SIGNATURE, not by taste:\na function that took &[T] borrowed for reading, so iter_mut\nwill not compile there\n\n== lazy: nothing is built, and it stops early ==\nfind(major == 2) -> Some(\"disk\")\nthe closure ran 2 times, not 8\n`map` does not produce a list -- it computes one item each time\n`find` asks, and `find` stops asking the moment it succeeds\nthe compiled code is the loop you would have written by hand\n\n== collect() is the one adapter that allocates ==\ncollect() -> [\"console\", \"disk\", \"null\"]\nit has to put the results SOMEWHERE. Host code and tests only,\nuntil the kernel has a heap.\n\n== a chain that reads as English ==\n  start at 3 -> picked Some(\"console\"), resume at 1\n  start at 1 -> picked Some(\"disk\"), resume at 2\n  start at 2 -> picked Some(\"null\"), resume at 3\nconsider N offsets, wrap each into a table index starting where\nwe left off, take the first live one, remember to resume after it\n\n== the hard limit, and what happens at it ==\n8 slots, 3 already taken, so 5 installs should fit:\n  major 4  -> slot 3\n  major 5  -> slot 4\n  major 6  -> slot 5\n  major 7  -> slot 6\n  major 8  -> slot 7\n  major 9  -> None: table full. This is `open` returning -1.\n  major 10 -> None: table full. This is `open` returning -1.\n  major 11 -> None: table full. This is `open` returning -1.\nThe failure lands at the exact call that asked for too much, and\nit is testable: fill the table and check that the next one fails.\nWith a Vec the limit is `until memory runs out`, which sounds\nmore generous and is much worse: the failure arrives late, at an\nunrelated allocation elsewhere, and you cannot test it.\n\n== where Vec DOES belong ==\nHost commands, tests, and the kernel after it has a heap --\nallocated at initialization, never on the trap path.\n`Vec` is not bad. It is a tool with a prerequisite.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  }
+ },
+ "broken": {
+  "e0004_non_exhaustive": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0004_non_exhaustive.rs",
+   "rendered": "error[E0004]: non-exhaustive patterns: `Trap::Breakpoint` not covered\n  --> e0004_non_exhaustive.rs:21:11\n   |\n21 |     match t {\n   |           ^ pattern `Trap::Breakpoint` not covered\n   |\nnote: `Trap` defined here\n  --> e0004_non_exhaustive.rs:12:6\n   |\n12 | enum Trap {\n   |      ^^^^\n...\n17 |     Breakpoint,\n   |     ---------- not covered\n   = note: the matched value is of type `Trap`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n   |\n25 ~         Trap::Illegal => true,\n26 ~         Trap::Breakpoint => todo!(),\n   |\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0004`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0004",
+     "message": "non-exhaustive patterns: `Trap::Breakpoint` not covered",
+     "rendered": "error[E0004]: non-exhaustive patterns: `Trap::Breakpoint` not covered\n  --> e0004_non_exhaustive.rs:21:11\n   |\n21 |     match t {\n   |           ^ pattern `Trap::Breakpoint` not covered\n   |\nnote: `Trap` defined here\n  --> e0004_non_exhaustive.rs:12:6\n   |\n12 | enum Trap {\n   |      ^^^^\n...\n17 |     Breakpoint,\n   |     ---------- not covered\n   = note: the matched value is of type `Trap`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n   |\n25 ~         Trap::Illegal => true,\n26 ~         Trap::Breakpoint => todo!(),\n   |\n\n",
+     "spans": [
+      {
+       "ls": 21,
+       "le": 21,
+       "cs": 11,
+       "ce": 12,
+       "primary": true,
+       "label": "pattern `Trap::Breakpoint` not covered"
+      },
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 6,
+       "ce": 10,
+       "primary": false,
+       "label": ""
+      },
+      {
+       "ls": 17,
+       "le": 17,
+       "cs": 5,
+       "ce": 15,
+       "primary": false,
+       "label": "not covered"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0004`.",
+     "rendered": "For more information about this error, try `rustc --explain E0004`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "2fda6ef88abc9caace6ca2c8ef095adafb98e066"
+  },
+  "e0015_non_const_in_const": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0015_non_const_in_const.rs",
+   "rendered": "error[E0015]: cannot call non-const function `blocks_for` in constants\n  --> e0015_non_const_in_const.rs:17:26\n   |\n17 | const ROOT_BLOCKS: u32 = blocks_for(5000);\n   |                          ^^^^^^^^^^^^^^^^\n   |\n   = note: calls in constants are limited to constant functions, tuple structs and tuple variants\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0015`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0015",
+     "message": "cannot call non-const function `blocks_for` in constants",
+     "rendered": "error[E0015]: cannot call non-const function `blocks_for` in constants\n  --> e0015_non_const_in_const.rs:17:26\n   |\n17 | const ROOT_BLOCKS: u32 = blocks_for(5000);\n   |                          ^^^^^^^^^^^^^^^^\n   |\n   = note: calls in constants are limited to constant functions, tuple structs and tuple variants\n\n",
+     "spans": [
+      {
+       "ls": 17,
+       "le": 17,
+       "cs": 26,
+       "ce": 42,
+       "primary": true,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0015`.",
+     "rendered": "For more information about this error, try `rustc --explain E0015`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "96de60f023b70b33a6f3059fbe35da5a65870948"
+  },
+  "e0080_const_index": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0080_const_index.rs",
+   "rendered": "error[E0080]: index out of bounds: the length is 4 but the index is 8\n  --> e0080_const_index.rs:15:19\n   |\n15 | const LAST: u32 = TABLE[8];\n   |                   ^^^^^^^^ evaluation of `LAST` failed here\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0080`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0080",
+     "message": "index out of bounds: the length is 4 but the index is 8",
+     "rendered": "error[E0080]: index out of bounds: the length is 4 but the index is 8\n  --> e0080_const_index.rs:15:19\n   |\n15 | const LAST: u32 = TABLE[8];\n   |                   ^^^^^^^^ evaluation of `LAST` failed here\n\n",
+     "spans": [
+      {
+       "ls": 15,
+       "le": 15,
+       "cs": 19,
+       "ce": 27,
+       "primary": true,
+       "label": "evaluation of `LAST` failed here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0080`.",
+     "rendered": "For more information about this error, try `rustc --explain E0080`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "d030b1b02d2499e4146a0c266e1d1870a88d25dd"
+  },
+  "e0184_copy_with_drop": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0184_copy_with_drop.rs",
+   "rendered": "error[E0184]: the trait `Copy` cannot be implemented for this type; the type has a destructor\n  --> e0184_copy_with_drop.rs:13:17\n   |\n13 | #[derive(Clone, Copy)]\n   |                 ^^^^ `Copy` not allowed on types with destructors\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0184`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0184",
+     "message": "the trait `Copy` cannot be implemented for this type; the type has a destructor",
+     "rendered": "error[E0184]: the trait `Copy` cannot be implemented for this type; the type has a destructor\n  --> e0184_copy_with_drop.rs:13:17\n   |\n13 | #[derive(Clone, Copy)]\n   |                 ^^^^ `Copy` not allowed on types with destructors\n\n",
+     "spans": [
+      {
+       "ls": 13,
+       "le": 13,
+       "cs": 17,
+       "ce": 21,
+       "primary": true,
+       "label": "`Copy` not allowed on types with destructors"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0184`.",
+     "rendered": "For more information about this error, try `rustc --explain E0184`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "1ec12e6639a84f22216fff4b22ca64f1db3059a0"
+  },
+  "e0308_newtype_mismatch": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0308_newtype_mismatch.rs",
+   "rendered": "error[E0308]: mismatched types\n  --> e0308_newtype_mismatch.rs:27:16\n   |\n27 |     read_block(n);\n   |     ---------- ^ expected `BlockNo`, found `ByteCount`\n   |     |\n   |     arguments to this function are incorrect\n   |\nnote: function defined here\n  --> e0308_newtype_mismatch.rs:21:4\n   |\n21 | fn read_block(b: BlockNo) -> u32 {\n   |    ^^^^^^^^^^ ----------\n\nerror[E0308]: mismatched types\n  --> e0308_newtype_mismatch.rs:28:16\n   |\n28 |     read_block(7);\n   |     ---------- ^ expected `BlockNo`, found integer\n   |     |\n   |     arguments to this function are incorrect\n   |\nnote: function defined here\n  --> e0308_newtype_mismatch.rs:21:4\n   |\n21 | fn read_block(b: BlockNo) -> u32 {\n   |    ^^^^^^^^^^ ----------\nhelp: try wrapping the expression in `BlockNo`\n   |\n28 |     read_block(BlockNo(7));\n   |                ++++++++ +\n\nerror: aborting due to 2 previous errors\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0308",
+     "message": "mismatched types",
+     "rendered": "error[E0308]: mismatched types\n  --> e0308_newtype_mismatch.rs:27:16\n   |\n27 |     read_block(n);\n   |     ---------- ^ expected `BlockNo`, found `ByteCount`\n   |     |\n   |     arguments to this function are incorrect\n   |\nnote: function defined here\n  --> e0308_newtype_mismatch.rs:21:4\n   |\n21 | fn read_block(b: BlockNo) -> u32 {\n   |    ^^^^^^^^^^ ----------\n\n",
+     "spans": [
+      {
+       "ls": 27,
+       "le": 27,
+       "cs": 16,
+       "ce": 17,
+       "primary": true,
+       "label": "expected `BlockNo`, found `ByteCount`"
+      },
+      {
+       "ls": 27,
+       "le": 27,
+       "cs": 5,
+       "ce": 15,
+       "primary": false,
+       "label": "arguments to this function are incorrect"
+      },
+      {
+       "ls": 21,
+       "le": 21,
+       "cs": 15,
+       "ce": 25,
+       "primary": false,
+       "label": ""
+      },
+      {
+       "ls": 21,
+       "le": 21,
+       "cs": 4,
+       "ce": 14,
+       "primary": false,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": "E0308",
+     "message": "mismatched types",
+     "rendered": "error[E0308]: mismatched types\n  --> e0308_newtype_mismatch.rs:28:16\n   |\n28 |     read_block(7);\n   |     ---------- ^ expected `BlockNo`, found integer\n   |     |\n   |     arguments to this function are incorrect\n   |\nnote: function defined here\n  --> e0308_newtype_mismatch.rs:21:4\n   |\n21 | fn read_block(b: BlockNo) -> u32 {\n   |    ^^^^^^^^^^ ----------\nhelp: try wrapping the expression in `BlockNo`\n   |\n28 |     read_block(BlockNo(7));\n   |                ++++++++ +\n\n",
+     "spans": [
+      {
+       "ls": 28,
+       "le": 28,
+       "cs": 16,
+       "ce": 17,
+       "primary": true,
+       "label": "expected `BlockNo`, found integer"
+      },
+      {
+       "ls": 28,
+       "le": 28,
+       "cs": 5,
+       "ce": 15,
+       "primary": false,
+       "label": "arguments to this function are incorrect"
+      },
+      {
+       "ls": 21,
+       "le": 21,
+       "cs": 15,
+       "ce": 25,
+       "primary": false,
+       "label": ""
+      },
+      {
+       "ls": 21,
+       "le": 21,
+       "cs": 4,
+       "ce": 14,
+       "primary": false,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 2 previous errors",
+     "rendered": "error: aborting due to 2 previous errors\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0308`.",
+     "rendered": "For more information about this error, try `rustc --explain E0308`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "e4d4e410ef349a5349344592dd3047285848881e"
+  },
+  "e0382_method_moved_it": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0382_method_moved_it.rs",
+   "rendered": "error[E0382]: use of moved value: `e`\n  --> e0382_method_moved_it.rs:28:34\n   |\n27 |     let e = Entry(0x2000_0007);\n   |         - move occurs because `e` has type `Entry`, which does not implement the `Copy` trait\n28 |     println!(\"{} {}\", e.flags(), e.is_valid());\n   |                         -------  ^ value used here after move\n   |                         |\n   |                         `e` moved due to this method call\n   |\nnote: `Entry::flags` takes ownership of the receiver `self`, which moves `e`\n  --> e0382_method_moved_it.rs:17:14\n   |\n17 |     fn flags(self) -> u32 {\n   |              ^^^^\nhelp: you can `clone` the value and consume it, but this might not be your desired behavior\n   |\n28 |     println!(\"{} {}\", e.clone().flags(), e.is_valid());\n   |                        ++++++++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0382`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0382",
+     "message": "use of moved value: `e`",
+     "rendered": "error[E0382]: use of moved value: `e`\n  --> e0382_method_moved_it.rs:28:34\n   |\n27 |     let e = Entry(0x2000_0007);\n   |         - move occurs because `e` has type `Entry`, which does not implement the `Copy` trait\n28 |     println!(\"{} {}\", e.flags(), e.is_valid());\n   |                         -------  ^ value used here after move\n   |                         |\n   |                         `e` moved due to this method call\n   |\nnote: `Entry::flags` takes ownership of the receiver `self`, which moves `e`\n  --> e0382_method_moved_it.rs:17:14\n   |\n17 |     fn flags(self) -> u32 {\n   |              ^^^^\nhelp: you can `clone` the value and consume it, but this might not be your desired behavior\n   |\n28 |     println!(\"{} {}\", e.clone().flags(), e.is_valid());\n   |                        ++++++++\n\n",
+     "spans": [
+      {
+       "ls": 28,
+       "le": 28,
+       "cs": 25,
+       "ce": 32,
+       "primary": false,
+       "label": "`e` moved due to this method call"
+      },
+      {
+       "ls": 28,
+       "le": 28,
+       "cs": 34,
+       "ce": 35,
+       "primary": true,
+       "label": "value used here after move"
+      },
+      {
+       "ls": 27,
+       "le": 27,
+       "cs": 9,
+       "ce": 10,
+       "primary": false,
+       "label": "move occurs because `e` has type `Entry`, which does not implement the `Copy` trait"
+      },
+      {
+       "ls": 17,
+       "le": 17,
+       "cs": 14,
+       "ce": 18,
+       "primary": false,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0382`.",
+     "rendered": "For more information about this error, try `rustc --explain E0382`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "e802e194ff6e2fd23f6ace4bab0e3c97403f486e"
+  },
+  "e0507_move_out_of_self": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0507_move_out_of_self.rs",
+   "rendered": "error[E0507]: cannot move out of `self.name` which is behind a shared reference\n  --> e0507_move_out_of_self.rs:20:9\n   |\n20 |         self.name\n   |         ^^^^^^^^^ move occurs because `self.name` has type `String`, which does not implement the `Copy` trait\n   |\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n20 |         self.name.clone()\n   |                  ++++++++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0507`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0507",
+     "message": "cannot move out of `self.name` which is behind a shared reference",
+     "rendered": "error[E0507]: cannot move out of `self.name` which is behind a shared reference\n  --> e0507_move_out_of_self.rs:20:9\n   |\n20 |         self.name\n   |         ^^^^^^^^^ move occurs because `self.name` has type `String`, which does not implement the `Copy` trait\n   |\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n20 |         self.name.clone()\n   |                  ++++++++\n\n",
+     "spans": [
+      {
+       "ls": 20,
+       "le": 20,
+       "cs": 9,
+       "ce": 18,
+       "primary": true,
+       "label": "move occurs because `self.name` has type `String`, which does not implement the `Copy` trait"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0507`.",
+     "rendered": "For more information about this error, try `rustc --explain E0507`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "0707434ee0aae7cbe53cd6794219a52cde308959"
+  }
+ }
+}

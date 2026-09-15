@@ -24,3 +24,9 @@ flamegraph.svg
 
 # Misc
 *.log
+
+# Syncthing
+.syncthing.*.tmp
+
+# Python
+__pycache__/

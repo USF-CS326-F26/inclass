@@ -1,0 +1,501 @@
+{
+ "tool": "pointat/1",
+ "week": "week02",
+ "captured_at": "2026-09-15T14:15:16-07:00",
+ "rustc": "rustc 1.89.0 (29483883e 2025-08-04)",
+ "cargo": "cargo 1.89.0 (c24e10642 2025-06-23)",
+ "os": "macOS 26.6.2 arm64",
+ "build": {
+  "success": true,
+  "stderr": ""
+ },
+ "programs": {
+  "01_scalars": {
+   "source_sha1": "ddc1f16b745db78d75660b9888a79f5a2ae98d8f",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 01_scalars",
+     "args": [],
+     "output": "== integers ==\nu8    1 byte  0 ..= 255\ni32   4 bytes -2147483648 ..= 2147483647\nu64   8 bytes 0 ..= 18446744073709551615\nusize 8 bytes (one machine address)\n\n== literals are the same bits, written differently ==\n4096 == 4096 == 4096 == 4096  -> true\n0x8000_0000 = 2147483648 = 0x80000000 = 0b10000000000000000000000000000000\n\n== no implicit conversion, ever ==\n200u8 as u32 + 100 = 300\n300u32 as u8 = 44  (bits above 8 are gone)\n\n== overflow is not undefined behavior ==\n255u8.checked_add(1)   = None\n255u8.wrapping_add(1)  = 0\n255u8.saturating_add(1)= 255\n255u8.overflowing_add(1)= (0, true)\n\n== the other scalars ==\nbool true (1 byte)   char 'S' (4 bytes)   f64 1365.333 (8 bytes)\n\n== a u64 that is really 64 flags: an SV39 page-table entry ==\npte      = 0x0000000020001407\nvalid    = true\nreadable = true\nwritable = true\nppn      = 0x80005 -> phys addr 0x80005000\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "02_compound": {
+   "source_sha1": "b67752093b817848c7c5dc2960d5dbf4fe7048fd",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 02_compound",
+     "args": [],
+     "output": "== tuples: a fixed group, positional ==\nram 0x80000000..0x88000000 = 128 MiB\ntuple.0 = 0x80000000, size_of = 16 bytes\n\n== arrays: [T; N], N is part of the type ==\nsize_of::<[Frame; 4]>() = 64 bytes (4 x 16)\n  0x80000000  free\n  0x80001000  free\n  0x80002000  in use\n  0x80003000  free\nget(9) = None  <- no out-of-bounds read\n\n== structs: named fields, still just a layout ==\nFrame { addr: 2147483648, free: true }\n  addr in hex = 0x80000000, size_of::<Frame>() = 16 bytes\n\n== enums: one of several shapes, with the tag included ==\n  read block 7\n  write 512B to block 7\n  flush\nsize_of::<Request>() = 12 bytes\n\n== Option: the null pointer, made a type you must open ==\n  free list head at 0x80005000\n  free list is empty\nsize_of::<&u8>()         = 8\nsize_of::<Option<&u8>>() = 8  <- same! None is the 0 bit pattern\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "03_stack_and_heap": {
+   "source_sha1": "8a59e0934453cd53e17f8f5b101f77579b2c2911",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 03_stack_and_heap",
+     "args": [],
+     "output": "== a fixed-size value is the whole value ==\nn = 4096   lives at stack address 0x16efd5bc8   size 8 bytes\n\n== a String is a handle to somewhere else ==\nhandle on the stack at 0x16efd5cb0, 24 bytes wide (ptr, len, cap)\n  ptr -> 0x1015d1d10   len = 6   cap = 6\n  the bytes [107, 101, 114, 110, 101, 108] are NOT at 0x16efd5cb0; they are at 0x1015d1d10\n\n== growth moves the buffer, not the handle ==\nhandle stays at 0x16efd5f18 for the whole loop\n  push(0) len=1 cap=2 buf=0x1015d1b90\n  push(1) len=2 cap=2 buf=0x1015d1b90\n  push(2) len=3 cap=4 buf=0x1015d1b90  <- grew: allocator extended it in place, same address\n  push(3) len=4 cap=4 buf=0x1015d1b90\n  push(4) len=5 cap=8 buf=0xc5ec00960  <- grew: new buffer, old one copied and freed\n  push(5) len=6 cap=8 buf=0xc5ec00960\n\n== &str: a borrowed view, no ownership at all ==\nowned buffer 0x1015d1b90, view 0x1015d1b92  <- same memory, offset by 2\nsize_of::<String>() = 24   size_of::<&str>() = 16\n\n== a literal is not on the heap either ==\n\"compiled into .rodata\" at 0x100e63a83\n\n== the release point is visible ==\n  inside the block: 0x1015d1ba0 holds \"freed at the closing brace\"\n  after the block: that allocation is already gone\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "04_move": {
+   "source_sha1": "a146b733e3e86088d4d3bd0915c6a7da750bd3ca",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 04_move",
+     "args": [],
+     "output": "== assignment moves ==\na's buffer was 0x105879d30\nb's buffer is  0x105879d30   <- identical: nothing was copied\nbut `a` is no longer a usable name (uncomment the line to see E0382)\n\n== passing to a function moves too ==\ncaller owns 0x105879d40\n  consume() now owns 0x105879d40 (\"page 0x8000_5000\")\ncaller no longer owns anything\n\n== if the caller still needs it, hand it back ==\nreturned to caller: \"boot | kalloc ready | mmu on\"\n\n== moves out of collections are blocked, not silent ==\nborrowed v[0] = \"a\"; v is still whole with 2 items\ncloned v[0] = \"a\" at a different buffer 0x105879c00 vs 0x105879d40\n\n== a move is not a memcpy of the data ==\nmoved an 8 MiB Vec by copying 24 bytes of stack: buffer still 0x520000000\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "05_copy_types": {
+   "source_sha1": "cb95afd00d52fdf846309c5762b265d6613fa6c7",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 05_copy_types",
+     "args": [],
+     "output": "== scalars copy ==\nx = 5, y = 5   both still usable; separate slots 0x16d941db8 0x16d941dbc\n\n== a Copy struct copies ==\na = Pte { ppn: 524293, flags: 0 }  at 0x16d941ed8\nb = Pte { ppn: 524293, flags: 7 }  at 0x16d941ee8   <- independent 16-byte copy\n\n== arrays of Copy types copy ==\nt1[0] = Pte { ppn: 1, flags: 1 }\nt2[0] = Pte { ppn: 99, flags: 1 }   <- t1 untouched\n\n== a type that owns something moves instead ==\nd2 = Device { name: \"uart0\" }   (d1 is moved-from; Device owns a String)\nclone -> different buffers: 0x102c3dd70 vs 0x102c3dbf0\n\n== Copy XOR Drop ==\nA destructor means one release point. A copy means many values.\nRust refuses the combination — that is the double free, rejected.\n\n== references are Copy; what they point at is not ==\nr1 = \"free list\" r2 = \"free list\"  both point at 0x102c3dc00\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "06_drop": {
+   "source_sha1": "b007b45f4bf27db14d1b18288b2820e31e3ddea7",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 06_drop",
+     "args": [],
+     "output": "== reverse declaration order ==\n  kalloc  0x80001000\n  kalloc  0x80002000\n  kalloc  0x80003000\n  -- end of block --\n  kfree   0x80003000\n  kfree   0x80002000\n  kfree   0x80001000\n\n== a move changes WHO drops it, not whether ==\n  kalloc  0x80004000\n  stash() owns 0x80004000\n  kfree   0x80004000\n  back in main; nothing left to free here\n\n== returning ownership defers the drop ==\n  kalloc  0x80005000\n  main owns 0x80005000 now\n  kfree   0x80005000\n\n== drop() is just a move into a function that ends ==\n  kalloc  0x80006000\n  releasing early\n  kfree   0x80006000\n  ... rest of the block runs with the page already freed\n\n== early return still frees everything ==\n  kalloc  0x80007000\n  error path, returning early (owner: 0x80007000)\n  kfree   0x80007000\n  kalloc  0x80007000\n  success path\n  kfree   0x80007000\n\n== even a panic unwinds and frees (this one is caught) ==\n  kalloc  0x80009000\n\nthread 'main' panicked at src/bin/06_drop.rs:69:9:\nsimulated fault\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n  kfree   0x80009000\n  page above was freed during unwinding\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "07_borrow_shared": {
+   "source_sha1": "0debf23c85f51da142b046ae1e79c5f1f4eb96ca",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 07_borrow_shared",
+     "args": [],
+     "output": "== lending instead of giving ==\ncount = 3\nfirst = 0x80001000\nthe caller still owns `list`: 3 pages\n\n== many readers at once ==\nr1 0x16b8b1fd0  r2 0x16b8b1fd0  r3 -> buffer 0x104dd1b50\nall three point at the same memory; none of them can change it\n\n== a borrow cannot outlive the owner ==\nreturned an owned String \"kernel\" instead of a reference to dead stack\n\n== borrows end at their LAST USE, not the closing brace ==\nsum = 6\npushed; v = [1, 2, 3, 4]\n\n== &T is Copy, so passing it along is free ==\n  show() sees \"uart0\" at 0x104dd1b70\n  show() sees \"uart0\" at 0x104dd1b70\nstill owned by main: \"uart0\"\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "08_borrow_mut": {
+   "source_sha1": "78da3959804b8fa1559dbf4e1415ba1e09031c97",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 08_borrow_mut",
+     "args": [],
+     "output": "== mutating through &mut ==\nbefore: free=[0x80001000, 0x80002000] handed_out=0\ntook 0x80002000\nafter:  free=[0x80001000] handed_out=1   <- main still owns the allocator\ngave back:  free=[0x80001000, 0x80009000] handed_out=0\n\n== exactly one &mut at a time ==\nmutated through m: handed_out = 100\nborrow over, `a` usable again: handed_out = 100\n\n== &T and &mut T cannot overlap ==\nlen was 2, now 3\n\n== the iterator-invalidation bug, in the language ==\nv = [1, 2, 3, 10, 20, 30]\n\n== reborrowing: passing a &mut along ==\nafter two bumps: handed_out = 102\n\n== two &mut into DISJOINT parts is fine ==\ntable = [\n    0xaaaa,\n    0x0,\n    0x0,\n    0xbbbb,\n    0x0,\n    0x0,\n]\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "09_slices": {
+   "source_sha1": "93fa348c789aee2fa71a2f466233065752f4d8e6",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 09_slices",
+     "args": [],
+     "output": "== a window into an array ==\nbuf     [10, 11, 12, 13, 14, 15, 16, 17] at 0x16d155bc0\n&buf[2..5] [12, 13, 14] at 0x16d155bc2  <- same memory, offset 2, len 3\nsize_of::<&[u8]>() = 16 bytes (ptr + len)\n\n== one function, any backing storage ==\nchecksum(array)   = 108\nchecksum(vec)     = 10\nchecksum(array)   = 27\nchecksum(slice)   = 39\n\n== &str is a slice of UTF-8 bytes ==\ntag  = \"kalloc:\"\naddr = \" 0x8000_5000\"\nboth point into the ONE buffer at 0x779000960: 0x779000960 and 0x779000967\n\n== mutable slices write through ==\npage = [aa, aa, aa, aa, aa, aa, aa, aa, 55, 55, 55, 55, 55, 55, 55, 55]\n\n== length is checked, not trusted ==\nbuf.get(20) = None   <- None, not a wild read\nbuf.get(2..5) = [12, 13, 14]\n\n== chunks: how you walk a page table or a disk block ==\n  entry 0: [aa, aa, aa, aa]\n  entry 1: [aa, aa, aa, aa]\n  entry 2: [55, 55, 55, 55]\n  entry 3: [55, 55, 55, 55]\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "10_how_to_pass": {
+   "source_sha1": "7f4b471a26984df068dcc48122eb2dd0f2ee3857",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 10_how_to_pass",
+     "args": [],
+     "output": "len via &Buffer      = 3\nafter append(&mut)   = [1, 2, 3, 4]\nenqueued, queue owns it now: Buffer(4 bytes) parked in the queue\nafter move-in/move-out = [0, 0]\n\n== the same four, with the errors they prevent ==\ncount_bytes(&owned) = 6, owned still here: \"kernel\"\nconsume_and_upper -> \"KERNEL\"\n\n== a full mini-allocator, borrow-checked ==\ntook 0x80001000 and 0x80002000, 1 left\nreturned one, 2 left, top of list = 0x80001000\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  }
+ },
+ "broken": {
+  "e0106_dangling_reference": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0106_dangling_reference.rs",
+   "rendered": "error[E0106]: missing lifetime specifier\n  --> e0106_dangling_reference.rs:11:16\n   |\n11 | fn dangle() -> &String {\n   |                ^ expected named lifetime parameter\n   |\n   = help: this function's return type contains a borrowed value, but there is no value for it to be borrowed from\nhelp: consider using the `'static` lifetime, but this is uncommon unless you're returning a borrowed value from a `const` or a `static`\n   |\n11 | fn dangle() -> &'static String {\n   |                 +++++++\nhelp: instead, you are more likely to want to return an owned value\n   |\n11 - fn dangle() -> &String {\n11 + fn dangle() -> String {\n   |\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0106`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0106",
+     "message": "missing lifetime specifier",
+     "rendered": "error[E0106]: missing lifetime specifier\n  --> e0106_dangling_reference.rs:11:16\n   |\n11 | fn dangle() -> &String {\n   |                ^ expected named lifetime parameter\n   |\n   = help: this function's return type contains a borrowed value, but there is no value for it to be borrowed from\nhelp: consider using the `'static` lifetime, but this is uncommon unless you're returning a borrowed value from a `const` or a `static`\n   |\n11 | fn dangle() -> &'static String {\n   |                 +++++++\nhelp: instead, you are more likely to want to return an owned value\n   |\n11 - fn dangle() -> &String {\n11 + fn dangle() -> String {\n   |\n\n",
+     "spans": [
+      {
+       "ls": 11,
+       "le": 11,
+       "cs": 16,
+       "ce": 17,
+       "primary": true,
+       "label": "expected named lifetime parameter"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0106`.",
+     "rendered": "For more information about this error, try `rustc --explain E0106`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "3f05f99fd2d81b20092e45b6064cdf946769460e"
+  },
+  "e0382_use_after_move": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0382_use_after_move.rs",
+   "rendered": "error[E0382]: borrow of moved value: `s`\n  --> e0382_use_after_move.rs:12:16\n   |\n10 |     let s = String::from(\"kernel\");\n   |         - move occurs because `s` has type `String`, which does not implement the `Copy` trait\n11 |     let t = s;\n   |             - value moved here\n12 |     println!(\"{s} {t}\");\n   |                ^ value borrowed here after move\n   |\n   = note: this error originates in the macro `$crate::format_args_nl` which comes from the expansion of the macro `println` (in Nightly builds, run with -Z macro-backtrace for more info)\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n11 |     let t = s.clone();\n   |              ++++++++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0382`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0382",
+     "message": "borrow of moved value: `s`",
+     "rendered": "error[E0382]: borrow of moved value: `s`\n  --> e0382_use_after_move.rs:12:16\n   |\n10 |     let s = String::from(\"kernel\");\n   |         - move occurs because `s` has type `String`, which does not implement the `Copy` trait\n11 |     let t = s;\n   |             - value moved here\n12 |     println!(\"{s} {t}\");\n   |                ^ value borrowed here after move\n   |\n   = note: this error originates in the macro `$crate::format_args_nl` which comes from the expansion of the macro `println` (in Nightly builds, run with -Z macro-backtrace for more info)\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n11 |     let t = s.clone();\n   |              ++++++++\n\n",
+     "spans": [
+      {
+       "ls": 11,
+       "le": 11,
+       "cs": 13,
+       "ce": 14,
+       "primary": false,
+       "label": "value moved here"
+      },
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 16,
+       "ce": 17,
+       "primary": true,
+       "label": "value borrowed here after move"
+      },
+      {
+       "ls": 10,
+       "le": 10,
+       "cs": 9,
+       "ce": 10,
+       "primary": false,
+       "label": "move occurs because `s` has type `String`, which does not implement the `Copy` trait"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0382`.",
+     "rendered": "For more information about this error, try `rustc --explain E0382`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "30501b79219366f2dfb343f7da4e8b2787154294"
+  },
+  "e0499_two_mut_borrows": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0499_two_mut_borrows.rs",
+   "rendered": "error[E0499]: cannot borrow `v` as mutable more than once at a time\n  --> e0499_two_mut_borrows.rs:12:13\n   |\n11 |     let a = &mut v;\n   |             ------ first mutable borrow occurs here\n12 |     let b = &mut v;\n   |             ^^^^^^ second mutable borrow occurs here\n13 |     a.push(4);\n   |     - first borrow later used here\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0499`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0499",
+     "message": "cannot borrow `v` as mutable more than once at a time",
+     "rendered": "error[E0499]: cannot borrow `v` as mutable more than once at a time\n  --> e0499_two_mut_borrows.rs:12:13\n   |\n11 |     let a = &mut v;\n   |             ------ first mutable borrow occurs here\n12 |     let b = &mut v;\n   |             ^^^^^^ second mutable borrow occurs here\n13 |     a.push(4);\n   |     - first borrow later used here\n\n",
+     "spans": [
+      {
+       "ls": 11,
+       "le": 11,
+       "cs": 13,
+       "ce": 19,
+       "primary": false,
+       "label": "first mutable borrow occurs here"
+      },
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 13,
+       "ce": 19,
+       "primary": true,
+       "label": "second mutable borrow occurs here"
+      },
+      {
+       "ls": 13,
+       "le": 13,
+       "cs": 5,
+       "ce": 6,
+       "primary": false,
+       "label": "first borrow later used here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0499`.",
+     "rendered": "For more information about this error, try `rustc --explain E0499`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "18cd7a5111b0043c6faecfae8cd20cd54a124e26"
+  },
+  "e0502_shared_and_mut": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0502_shared_and_mut.rs",
+   "rendered": "error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable\n  --> e0502_shared_and_mut.rs:13:5\n   |\n12 |     let first = &v[0];\n   |                  - immutable borrow occurs here\n13 |     v.push(4);\n   |     ^^^^^^^^^ mutable borrow occurs here\n14 |     println!(\"{first}\");\n   |                ----- immutable borrow later used here\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0502`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0502",
+     "message": "cannot borrow `v` as mutable because it is also borrowed as immutable",
+     "rendered": "error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable\n  --> e0502_shared_and_mut.rs:13:5\n   |\n12 |     let first = &v[0];\n   |                  - immutable borrow occurs here\n13 |     v.push(4);\n   |     ^^^^^^^^^ mutable borrow occurs here\n14 |     println!(\"{first}\");\n   |                ----- immutable borrow later used here\n\n",
+     "spans": [
+      {
+       "ls": 13,
+       "le": 13,
+       "cs": 5,
+       "ce": 14,
+       "primary": true,
+       "label": "mutable borrow occurs here"
+      },
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 18,
+       "ce": 19,
+       "primary": false,
+       "label": "immutable borrow occurs here"
+      },
+      {
+       "ls": 14,
+       "le": 14,
+       "cs": 16,
+       "ce": 21,
+       "primary": false,
+       "label": "immutable borrow later used here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0502`.",
+     "rendered": "For more information about this error, try `rustc --explain E0502`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "b5988ba414e442733bccde2c37d401969a9eb54d"
+  },
+  "e0505_move_while_borrowed": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0505_move_while_borrowed.rs",
+   "rendered": "error[E0505]: cannot move out of `s` because it is borrowed\n  --> e0505_move_while_borrowed.rs:10:13\n   |\n8  |     let s = String::from(\"kernel\");\n   |         - binding `s` declared here\n9  |     let r = &s;\n   |             -- borrow of `s` occurs here\n10 |     let t = s;\n   |             ^ move out of `s` occurs here\n11 |     println!(\"{r} {t}\");\n   |                - borrow later used here\n   |\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n9  |     let r = &s.clone();\n   |               ++++++++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0505`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0505",
+     "message": "cannot move out of `s` because it is borrowed",
+     "rendered": "error[E0505]: cannot move out of `s` because it is borrowed\n  --> e0505_move_while_borrowed.rs:10:13\n   |\n8  |     let s = String::from(\"kernel\");\n   |         - binding `s` declared here\n9  |     let r = &s;\n   |             -- borrow of `s` occurs here\n10 |     let t = s;\n   |             ^ move out of `s` occurs here\n11 |     println!(\"{r} {t}\");\n   |                - borrow later used here\n   |\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n9  |     let r = &s.clone();\n   |               ++++++++\n\n",
+     "spans": [
+      {
+       "ls": 10,
+       "le": 10,
+       "cs": 13,
+       "ce": 14,
+       "primary": true,
+       "label": "move out of `s` occurs here"
+      },
+      {
+       "ls": 9,
+       "le": 9,
+       "cs": 13,
+       "ce": 15,
+       "primary": false,
+       "label": "borrow of `s` occurs here"
+      },
+      {
+       "ls": 8,
+       "le": 8,
+       "cs": 9,
+       "ce": 10,
+       "primary": false,
+       "label": "binding `s` declared here"
+      },
+      {
+       "ls": 11,
+       "le": 11,
+       "cs": 16,
+       "ce": 17,
+       "primary": false,
+       "label": "borrow later used here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0505`.",
+     "rendered": "For more information about this error, try `rustc --explain E0505`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "fc7d901e624318a05c1df1c3743947eb9587913a"
+  },
+  "e0507_move_out_of_index": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0507_move_out_of_index.rs",
+   "rendered": "error[E0507]: cannot move out of index of `Vec<String>`\n  --> e0507_move_out_of_index.rs:12:17\n   |\n12 |     let first = v[0];\n   |                 ^^^^ move occurs because value has type `String`, which does not implement the `Copy` trait\n   |\nhelp: consider borrowing here\n   |\n12 |     let first = &v[0];\n   |                 +\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n12 |     let first = v[0].clone();\n   |                     ++++++++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0507`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0507",
+     "message": "cannot move out of index of `Vec<String>`",
+     "rendered": "error[E0507]: cannot move out of index of `Vec<String>`\n  --> e0507_move_out_of_index.rs:12:17\n   |\n12 |     let first = v[0];\n   |                 ^^^^ move occurs because value has type `String`, which does not implement the `Copy` trait\n   |\nhelp: consider borrowing here\n   |\n12 |     let first = &v[0];\n   |                 +\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n12 |     let first = v[0].clone();\n   |                     ++++++++\n\n",
+     "spans": [
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 17,
+       "ce": 21,
+       "primary": true,
+       "label": "move occurs because value has type `String`, which does not implement the `Copy` trait"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0507`.",
+     "rendered": "For more information about this error, try `rustc --explain E0507`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "6c5346e4bd408bf652b548ce073d1e4aa1b2d3df"
+  },
+  "e0596_immutable_borrow": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0596_immutable_borrow.rs",
+   "rendered": "error[E0596]: cannot borrow `v` as mutable, as it is not declared as mutable\n --> e0596_immutable_borrow.rs:8:5\n  |\n8 |     v.push(4);\n  |     ^ cannot borrow as mutable\n  |\nhelp: consider changing this to be mutable\n  |\n7 |     let mut v = vec![1, 2, 3];\n  |         +++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0596`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0596",
+     "message": "cannot borrow `v` as mutable, as it is not declared as mutable",
+     "rendered": "error[E0596]: cannot borrow `v` as mutable, as it is not declared as mutable\n --> e0596_immutable_borrow.rs:8:5\n  |\n8 |     v.push(4);\n  |     ^ cannot borrow as mutable\n  |\nhelp: consider changing this to be mutable\n  |\n7 |     let mut v = vec![1, 2, 3];\n  |         +++\n\n",
+     "spans": [
+      {
+       "ls": 8,
+       "le": 8,
+       "cs": 5,
+       "ce": 6,
+       "primary": true,
+       "label": "cannot borrow as mutable"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0596`.",
+     "rendered": "For more information about this error, try `rustc --explain E0596`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "ac2a04b08f145e0cfae409b7976aba62b2becd3c"
+  }
+ }
+}
