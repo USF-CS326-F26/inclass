@@ -34,7 +34,7 @@ fn main() {
         }
     }
     println!("{sleepers} slots sleep on {target:#x}");
-    println!("`c` is a &Option<usize>, so the comparison needs `*c` -- or `Some(&t)`");
+    println!("`c` is a &Option<usize>, so the comparison needs `*c` -- or a & on the other side: `c == &Some(target)`");
 
     println!("\n== enumerate(): the index rides along ==");
     let mut which = Vec::new();
