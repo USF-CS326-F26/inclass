@@ -1,0 +1,199 @@
+# Week 04 in class — Collections, traits, and errors as values
+
+Companion material for L06 (September 10) and L07 (September 15, 2026). The
+lecture pages on the course site make the arguments; this material is the part
+you *run* on screen while students run it too. Four exercises come due this
+week — `06r_collections` and `07r_traits` on Thursday, `08r_errors` and
+`10c_echo` on Friday — and each of the four parts of the session is aimed at
+one of them.
+
+```
+week04/
+├── slides.html                 50 slides, reveal.js, same theme as the course deck
+├── README.md                   this file — session plan and talking points
+├── examples/
+│   ├── Cargo.toml
+│   ├── src/bin/*.rs            12 runnable programs, one concept each
+│   ├── broken/*.rs             7 programs that must NOT compile, with the fixes
+│   └── show-errors.sh          compiles each broken file and shows rustc's message
+├── 06r_collections_example/    the exercise's shape, in a different domain
+├── 07r_traits_example/         the same, for the second Thursday exercise
+├── 08r_errors_example/         the same, for Friday's first
+└── 10c_echo_example/           the same, for Friday's second — host-only, on a ulib-shaped façade
+```
+
+## Running it
+
+```bash
+cd examples
+cargo run --bin 01_array_slice_vec      # ... through 12_argv_and_write_all
+```
+
+```bash
+cd examples && ./show-errors.sh
+```
+
+`show-errors.sh` walks all seven compile failures, pausing between each; pass a
+substring to jump to one: `./show-errors.sh e0506`. Nothing under `broken/` is
+part of the package, so `cargo build` always succeeds. One program,
+`08_option_vs_result`, builds with a single warning on purpose — the warning is
+the demo.
+
+The four worked examples are separate projects, each with its own tests:
+
+```bash
+cd 06r_collections_example && cargo run --bin basic_table   && cargo test && cargo run
+cd 07r_traits_example      && cargo run --bin basic_trait   && cargo test && cargo run
+cd 08r_errors_example      && cargo run --bin basic_result  && cargo test && cargo run
+cd 10c_echo_example        && cargo run --bin basic_command -- a b && cargo test && cargo run
+```
+
+Open `slides.html` in any browser — no server needed. Press `s` for speaker
+notes/timer, `Esc` for the slide grid, `f` for full screen.
+
+## The twelve programs
+
+| Program | The one idea | The line to point at |
+|---|---|---|
+| `01_array_slice_vec` | one function, three containers | `count_free(&arr)` and `count_free(&v)`: the same `&` |
+| `02_iter_mut_and_enumerate` | `*c = None` writes into the array | the `*` |
+| `03_slot_search` | an index, or nothing — never −1 | `position(..)` returning `Option<usize>` |
+| `04_adapters_and_closures` | three words, three types | `.flatten().copied().collect::<Vec<u16>>()` |
+| `05_trait_required_default` | the default was never written by any implementer | `puts` has a body in the trait; no `impl` mentions it |
+| `06_generics_and_bounds` | one body, three names | `type_name::<U>()` printed from inside the generic |
+| `07_static_vs_dyn` | a fat pointer is two words | `size_of::<&dyn Uart>() = 16` |
+| `08_option_vs_result` | absence is a fact, failure is a decision | `first_free(free).ok_or(AllocError::OutOfFrames)` |
+| `09_error_enum_and_question_mark` | each `?` is a different exit | the three `?`s in `load` |
+| `10_errno_boundary` | the collapse happens in exactly one place | the `match` in `sys_read` |
+| `11_bytes_vs_strings` | a string is bytes plus a checked promise | `str::from_utf8(..)` returns a `Result` |
+| `12_argv_and_write_all` | the slice is re-pointed, not copied | `buf = &buf[n..]` |
+
+## The seven failures
+
+| File | Error | Fix shown in the header comment |
+|---|---|---|
+| `e0506_assign_while_iterating.rs` | assigning `table[i]` inside `table.iter()` | `iter_mut` and `*slot = …`, or an index loop |
+| `e0596_iter_mut_behind_shared_ref.rs` | `iter_mut` on a `&[T]` parameter | change the parameter, not the loop |
+| `e0046_missing_required_method.rs` | overrode the default, skipped the required | supply `put`; delete the override |
+| `e0599_no_bound_no_method.rs` | a trait method on an unbounded type parameter | add `S: Sink` |
+| `e0038_not_dyn_compatible.rs` | a generic method, then `&mut dyn Trait` | `where Self: Sized`, or take a slice, or go generic |
+| `e0308_option_is_not_result.rs` | returned `find`'s `Option` from `lookup` | `.ok_or(e)`, or the two-arm `match` |
+| `e0277_question_mark_needs_result.rs` | `?` in a function returning `i64` | `match` at the boundary; `?` only below it |
+
+Every one of these has been checked against the installed toolchain — the error
+codes in the table are the codes rustc 1.95 actually emits. (`table[i] = x`
+on a slice is E0506, *assign while borrowed*; on a `Vec` the same line is
+E0502, because indexing a `Vec` is a method call.)
+
+## A 75-minute plan
+
+| Min | Slides | What happens |
+|-----|--------|--------------|
+| 0–4 | 1–3 | one system call, four exercises: `sys_open` read line by line |
+| 4–8 | 4–7 | arrays, slices, `Vec`; `iter` vs `iter_mut`; the signature decides **RUN** `01_array_slice_vec`, `02_iter_mut_and_enumerate`, then `show-errors.sh e0596` |
+| 8–12 | 8–9 | assign-while-iterating; the slot search **RUN** `show-errors.sh e0506`, `03_slot_search` |
+| 12–16 | 10–12 | adapters, `collect`, and `Vec` vs array **RUN** `04_adapters_and_closures` |
+| 16–24 | 13–17 | traits, required vs default, three implementers **RUN** `05_trait_required_default`, then `show-errors.sh e0046` |
+| 24–30 | 18–20 | generics, bounds, monomorphization **RUN** `06_generics_and_bounds`, then `show-errors.sh e0599` |
+| 30–36 | 21–25 | `dyn`, the fat pointer, choosing; policy vs mechanism **RUN** `07_static_vs_dyn`, then `show-errors.sh e0038` |
+| 36–42 | 26–30 | nowhere to throw; `Option` vs `Result`; `.ok_or`; the enum **RUN** `08_option_vs_result`, then `show-errors.sh e0308` |
+| 42–49 | 31–33 | `?`, its desugaring, where it may live, `From` **RUN** `09_error_enum_and_question_mark`, then `show-errors.sh e0277` |
+| 49–55 | 34–37 | the errno boundary; `unwrap`/`expect`; `#[must_use]` **RUN** `10_errno_boundary` |
+| 55–61 | 38–40 | bytes, `b"…"`, `from_utf8` **RUN** `11_bytes_vs_strings` |
+| 61–69 | 41–46 | argv, separators, `write_all`, the ceremony, the harness **RUN** `12_argv_and_write_all` |
+| 69–75 | 47–50 | the error table, and on to `06r`, `07r`, `08r`, and `10c` **RUN** `./show-errors.sh` |
+
+Cut first if you are short on time, in this order: slides 44–46 (the ceremony
+and the harness — `10c`'s README and `10c_echo_example/` carry them), then
+slide 33 (`From`) and slide 17 (`derive` and `fmt::Write`), then
+`04_adapters_and_closures` — folding `flatten().copied().collect()` into the
+end of `02`. Never cut slides 8, 29, 32, and 42: assign-while-iterating,
+`.ok_or`, `?` needing somewhere to return, and separator-not-terminator are the
+four traps in the four exercises.
+
+If the worked examples are going on screen instead, budget 8 minutes each and
+drop slides 10–12 and 44–46.
+
+## Talking points that land
+
+- **Write through the slot, not around it.** `iter_mut` hands you one `&mut`
+  per slot, in turn; `*slot = x` lands in the caller's array. Assigning
+  `table[i]` inside the table's own `iter()` loop writes while a borrow is
+  alive — E0506 — and the parameter type decides which loop you may write at
+  all: `&[T]` bought reading only (E0596).
+- **A default method is compiled against a `self` that does not exist yet.**
+  `write_line` calls `write_str` on types nobody has written. That is why a
+  fifth sink costs zero lines, and why the only way to break it is to skip the
+  required method (E0046).
+- **The bound is the whole contract, read in both directions.** `<O: Out>` is
+  what the body may assume and what the caller must prove. *"No method named
+  `write_line` found for type parameter `O`"* is not a missing `use`; it is a
+  missing bound, and rustc's help text is the fix.
+- **Absence is a fact; failure is a decision.** `find` returns `Option`
+  because a name not being there is nothing going wrong. `lookup` returns
+  `Result` because somebody asked for a file. `.ok_or(e)` is the one line
+  where the decision lives — keep the two apart and the policy stays visible.
+- **`?` all the way down, one `match` at the top.** `?` is a `return Err(e)`,
+  so it needs a `Result` to return into; the boundary function returns an
+  integer and cannot have one (E0277). That `match` is the only place an errno
+  number is ever spelled.
+- **`b" "` is not `" "`.** A byte-string literal is `&[u8; N]`; a string
+  literal is `&str` carrying a UTF-8 promise the kernel cannot afford to
+  check. `write_all` takes bytes because a UART, a disk block, and the stack
+  `exec` built are bytes. E0308 on the first line of `10c` is the type system
+  saying so.
+
+## Questions students ask, with short answers
+
+**"Why does `iter_mut` fix E0506 when `iter` plus an index does not?"** The
+`for` loop's iterator holds a borrow of the whole table until the loop ends;
+`table[i] = x` writes into it while that borrow is alive. `iter_mut` gives out
+one `&mut` at a time, and nothing else can alias it. (If you `return` right
+after the write, the borrow checker sees the iterator is never used again and
+lets it through — the moment the loop can continue, it will not.)
+
+**"Is `dyn` slow?"** One extra load and an indirect jump per call, and nothing
+inlines across it. The shell uses it at 115200 baud, where that is nothing;
+the scheduler uses generics because `pick_next` runs every tick. The real
+reason to choose `dyn` is not speed but storage: a `&mut dyn Out` fits in a
+struct field or an array; a generic parameter is one type per call site and
+cannot hold two.
+
+**"Why not just return `-1` like C?"** You do, at the very boundary, and rv6
+does today. Behind it, `-1` says nothing and nothing makes the caller look.
+`Result` says *why*, and `#[must_use]` is the compiler noticing you did not
+look. `08_option_vs_result` warns on purpose so you have seen the message.
+
+**"When is `unwrap` allowed?"** In tests, where a panic is one red test. And
+where you have just proved it cannot fail — `args.get(i).unwrap()` inside
+`for i in 1..args.len()` is honest. In kernel code a panic prints the word
+`panic` and stops the machine, so the rule is: `Result` for what the outside
+world did to you, panic for what you did to yourself.
+
+**"Does `?` work on `Option`?"** Yes, inside a function that returns `Option`:
+`None` returns `None`. What it will not do is mix — `?` on an `Option` inside
+a function returning `Result` is E0277, and `.ok_or` is the bridge.
+`Allocator::take` in the `07r` example uses it a day early.
+
+**"Why is it `no_main` — where does the program start?"** On the host
+`ulib::main!` expands to an ordinary `fn main`. On rv6 there is no runtime to
+call `main`, so the macro expands to a `_start` symbol that the linker script
+places first in the image and `exec` jumps to, with `argc`/`argv` read off the
+stack `exec` built. Your `run` is the same function in both cases; that is the
+whole point of the façade.
+
+## What comes next
+
+`oslings` exercises `06r_collections` and `07r_traits` (Thursday), then
+`08r_errors` and `10c_echo` (Friday). Then the commands: `11c_cat` (Thursday,
+September 24) is the read loop from L07 made executable, and `12c_wc`,
+`13c_grep`, and the extra-credit `14c_head` (Friday, September 25) are the same
+skeleton with O(1) state, a byte search, and an early stop — all written with
+this week's `&[u8]`, `write_all`, and `let _ =`. On October 1 `20a_asm_bridge`
+leaves the host for RISC-V. After that the four ideas arrive as kernel code:
+the lowest-free search over a fixed table and the one `match` that turns a
+`Result` into `-errno` are `sys_open` and `sys_close` in `50k`; the
+`Scheduler` trait with `RoundRobin` behind it is the kernel scheduler in `36k`;
+the `dyn Out` seam is the shell in `46k`; `FsError` grows to eight variants in
+`40k` and the compiler finds every `match` that needs a decision; and
+`putc`-shaped byte output is the UART driver in `45k`.
