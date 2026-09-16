@@ -293,6 +293,18 @@
     }
   });
 
+  // What pointat.edit.js needs: which article is showing, and a way to say
+  // that the section cells changed under it.
+  window.__pointat = {
+    current: function () { return cur; },
+    rescan: function () {
+      secs = cur ? slice(cur.querySelectorAll(".cell.code.sec")).map(function (c) { return c.dataset.sec; }) : [];
+      at = -1;
+    },
+    unpin: unpin,
+    unfocus: unfocus
+  };
+
   window.addEventListener("hashchange", route);
   route();
 })();

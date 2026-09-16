@@ -10,8 +10,12 @@ while the rest of the program dims.
 ```
 tools/
 ├── pointat.py        the generator (Python 3.9+, standard library only)
+├── pointat_serve.py  the local runner behind `pointat serve`
 ├── pointat.css       the page's styles, inlined into every examples.html
-├── pointat.js        the page's behaviour, inlined too
+├── pointat.js        the page's behaviour: routing, stepping, pinning
+├── pointat.bands.js  where a program's `== section ==` headers are
+├── pointat.edit.js   editing, running, and the fresh output pane
+├── parity-bands.mjs  checks pointat.bands.js against Python's sections
 ├── test_pointat.py   unit tests, with fixtures shaped after the corpus
 └── README.md         this file
 ```
@@ -101,6 +105,81 @@ names. It will not overwrite a published deck that differs from the source
 in any other way. It prints the differing lines instead, so a fix made on the
 site side is never lost.
 
+## Editing and running in the page
+
+Press <kbd>i</kbd> (or the **Edit and run** button) on any program. The captured
+grid is replaced by an editor on the left and a fresh output pane on the right.
+Change a line, press <kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd>, and
+the program is compiled and run for real.
+
+- **Section bands, not line links.** The editor's gutter keeps the coloured,
+  numbered section stripes and the fresh output is grouped into the same
+  sections, so the two sides still line up. Per-line links are not drawn for a
+  fresh run: they are only as good as the mapping, and the mapping is only
+  certain about the captured output. Revert brings them back.
+- **Compare** (<kbd>c</kbd>) flips between the committed page and your edited
+  run without losing the edit. **Revert** puts the original back, code and
+  output both.
+- Leaving the program and coming back shows the committed page again, with a
+  line offering the unsaved edit. So a deck link never lands on somebody's
+  half-finished experiment by surprise.
+- A fresh run is always labelled with the runner and the compiler that
+  produced it, so it cannot be mistaken for the capture.
+
+Where it runs depends on how the page was opened:
+
+| Opened from | Runs on | Notes |
+|---|---|---|
+| the course site, or a local file | play.rust-lang.org | no program arguments, stdout and stderr arrive separately, rustc is the Playground's stable |
+| `python3 tools/pointat.py serve` | this machine | offline, arguments work, one merged stream, real diagnostic spans |
+
+The classroom Wi-Fi allows play.rust-lang.org, and the course already tells
+students the Playground is fine to use in a session. Pressing Run sends the
+code there; nothing else leaves the machine.
+
+## The local runner
+
+```bash
+python3 tools/pointat.py serve                 # every week, on 127.0.0.1:8326
+python3 tools/pointat.py serve week04 --port 9000 --timeout 5 --open
+```
+
+It prints a URL per week and serves the generated pages with the local runner
+wired in. Students can run it too, though they do not need to: every student
+has rustup, and Python 3 ships with macOS and Ubuntu.
+
+It compiles and runs code somebody typed into a browser page, on the machine
+that runs it. It does not sandbox that code, and it is not meant to: it is your
+machine and your code, the same as `cargo run`. What it does prevent is any
+*other* page, user or machine making it run code:
+
+- it binds 127.0.0.1, so nothing off the machine can reach it;
+- only `POST /run` compiles anything, and it needs a token that exists only
+  inside the pages that process served. A custom header is what makes every
+  cross-origin attempt non-simple, and the server answers no `OPTIONS` and
+  sends no CORS header, so a browser refuses such a request before it arrives;
+- the `Host` header must name loopback and the right port, which is what stops
+  DNS rebinding from making a hostile site same-origin and reading the token;
+- an `Origin`, when sent, must be the server itself, and `null` is refused.
+
+Each run gets a fresh temporary directory, one run happens at a time, output is
+capped at 256 KiB while the program is still running, and a program that
+overruns its timeout is killed by process group, so nothing it spawned outlives
+it. `fn main() { loop { println!("x"); } }` is a safe thing to try in class.
+
+## Keeping the page's section scan honest
+
+The page infers one thing about edited code: where the `== section ==` headers
+are. That lives in `tools/pointat.bands.js`, and it must agree with Python's
+real lexer:
+
+```bash
+node tools/parity-bands.mjs          # 34 programs, 35 runs, 0 disagreements
+```
+
+Run it after touching either the scanner or the mapping in `pointat.py`. It
+needs the committed captures, but no network and no Rust toolchain.
+
 ## Keys on the page
 
 | Key | Does |
@@ -114,6 +193,9 @@ site side is never lost.
 | `r` | next run (programs with more than one `Run:` line) |
 | `e` | open or close the explanation or the build warnings |
 | `+` `-` | text size (remembered) |
+| `i` | edit this program and run it |
+| `⌘`/`Ctrl`+`Enter` | run what you have edited |
+| `c` | compare: the committed page, without losing the edit |
 
 Deep links work too: `examples.html#04_adapters_and_closures/s3` opens section 3,
 `#12_argv_and_write_all/r2` the second run, and `#e0506/L17` pins line 17.

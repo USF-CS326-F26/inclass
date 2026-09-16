@@ -427,5 +427,181 @@ class HardeningTest(unittest.TestCase):
         self.assertEqual(pa.normalize_deck(deck), plain)
 
 
+# ---------------------------------------------------------------------------
+# The local runner behind `pointat serve`
+# ---------------------------------------------------------------------------
+
+import http.client            # noqa: E402
+import json as _json          # noqa: E402
+import os                     # noqa: E402
+import shutil                 # noqa: E402
+import subprocess             # noqa: E402
+import tempfile               # noqa: E402
+import threading              # noqa: E402
+import time                   # noqa: E402
+
+sys.modules.setdefault("pointat", pa)
+import pointat_serve as ps    # noqa: E402
+
+HAVE_RUSTC = shutil.which("rustc") is not None
+
+
+class SpawnCappedTest(unittest.TestCase):
+    """The primitive that keeps a typed-in program from taking the machine."""
+
+    def test_captures_merged_output(self):
+        r = ps.spawn_capped(["/bin/sh", "-c", "echo out; echo err 1>&2"], ".", os.environ, 10)
+        self.assertEqual(sorted(r["data"].decode().split()), ["err", "out"])
+        self.assertEqual((r["exit"], r["timed_out"], r["truncated"]), (0, False, False))
+
+    def test_output_is_capped_while_it_runs(self):
+        r = ps.spawn_capped(["/bin/sh", "-c", "while :; do echo xxxxxxxxxxxxxxxx; done"],
+                            ".", os.environ, 20, cap=8192)
+        self.assertTrue(r["truncated"])
+        self.assertLessEqual(len(r["data"]), 8192)
+
+    def test_timeout_kills_the_process_group(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            marker = tmp / "grandchild-was-still-running"
+            r = ps.spawn_capped(["/bin/sh", "-c", f"(sleep 3; touch {marker}) & wait"],
+                                tmp, os.environ, 0.4)
+            self.assertTrue(r["timed_out"])
+            time.sleep(3.2)
+            self.assertFalse(marker.exists(), "a grandchild outlived its run")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+@unittest.skipUnless(HAVE_RUSTC, "needs rustc")
+class CompileAndRunTest(unittest.TestCase):
+    def build(self, source, args=()):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            ps.stage(tmp, "demo", source)
+            built = ps.compile_one(tmp, "demo", "2021", pa.run_env())
+            if not built["compiled"]:
+                return built, None
+            return built, ps.run_once(tmp, "demo", list(args), pa.run_env(), 10)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_runs_and_reports_argv_like_cargo_does(self):
+        built, ran = self.build('fn main() { println!("{:?}", std::env::args().next()); }', ["a"])
+        self.assertTrue(built["compiled"])
+        self.assertIn("target/debug/demo", ran["output"])
+        self.assertEqual(ran["exit"], 0)
+
+    def test_diagnostics_have_the_captures_shape(self):
+        built, ran = self.build("fn main() { let t: [u8; 1] = [0]; t[0] = 1; }")
+        self.assertFalse(built["compiled"])
+        self.assertIsNone(ran)
+        d = built["diagnostics"][0]
+        self.assertEqual(d["level"], "error")
+        self.assertTrue(d["code"].startswith("E"))
+        self.assertEqual(d["spans"][0]["ls"], 1)
+        self.assertIn("demo.rs", built["rendered"])
+
+
+class ServeTest(unittest.TestCase):
+    """Nothing but a page this process served may make it compile anything."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.httpd, cls.state = ps.build_server(["week04"], port=0, timeout=5)
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.port = cls.state.port
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+
+    def ask(self, method, path, body=None, host=None, origin=None, token=None,
+            ctype="application/json"):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=60)
+        headers = {"Host": host or f"127.0.0.1:{self.port}"}
+        if origin is not None:
+            headers["Origin"] = origin
+        if token is not None:
+            headers["X-Pointat-Token"] = token
+        if body is not None:
+            headers["Content-Type"] = ctype
+        conn.request(method, path, body=body, headers=headers)
+        r = conn.getresponse()
+        data = r.read()
+        conn.close()
+        return r.status, r.headers, data
+
+    def run_body(self, code="fn main() {}", stem="03_slot_search", **kw):
+        return _json.dumps(dict({"week": "week04", "stem": stem, "code": code}, **kw))
+
+    def test_health_and_page(self):
+        code, _, data = self.ask("GET", "/health")
+        self.assertEqual(code, 200)
+        self.assertEqual(_json.loads(data)["weeks"], ["week04"])
+        self.assertNotIn(self.state.token, data.decode())
+        code, _, page = self.ask("GET", "/week04/examples.html")
+        self.assertEqual(code, 200)
+        self.assertIn(self.state.token, page.decode())
+        self.assertIn('"runner": "local"', page.decode())
+
+    def test_no_cors_headers_anywhere(self):
+        for method, path in (("GET", "/health"), ("GET", "/week04/examples.html")):
+            _, headers, _ = self.ask(method, path)
+            self.assertEqual([k for k in headers.keys() if k.lower().startswith("access-control")], [])
+
+    def test_refusals(self):
+        body = self.run_body()
+        tok = self.state.token
+        cases = [
+            ("no token", dict(token=None), 403),
+            ("wrong token", dict(token="0" * 32), 403),
+            ("bad host", dict(token=tok, host="evil.example:1"), 403),
+            ("foreign origin", dict(token=tok, origin="https://evil.example"), 403),
+            ("origin null", dict(token=tok, origin="null"), 403),
+            ("text/plain", dict(token=tok, ctype="text/plain"), 415),
+        ]
+        for label, kw, want in cases:
+            code, _, _ = self.ask("POST", "/run", body=body, **kw)
+            self.assertEqual(code, want, f"{label} should be {want}")
+
+    def test_get_and_options_cannot_run(self):
+        self.assertEqual(self.ask("GET", "/run?code=fn+main(){}")[0], 404)
+        self.assertEqual(self.ask("OPTIONS", "/run")[0], 405)
+        self.assertEqual(self.ask("GET", "/../tools/pointat.py")[0], 404)
+
+    def test_bad_requests(self):
+        tok = self.state.token
+        self.assertEqual(self.ask("POST", "/run", body="not json", token=tok)[0], 400)
+        self.assertEqual(self.ask("POST", "/run", body=self.run_body(stem="../../etc/passwd"),
+                                  token=tok)[0], 404)
+        self.assertEqual(self.ask("POST", "/run", body=self.run_body(stem="99_nope"), token=tok)[0], 404)
+        self.assertEqual(self.ask("POST", "/run", body=self.run_body(code=""), token=tok)[0], 400)
+        self.assertEqual(self.ask("POST", "/run", body="x" * (ps.SOURCE_CAP + 1), token=tok)[0], 413)
+        self.assertEqual(self.ask("POST", "/run", body=self.run_body(args=["ok"] * 99),
+                                  token=tok)[0], 400)
+
+    @unittest.skipUnless(HAVE_RUSTC, "needs rustc")
+    def test_happy_path_compiles_and_runs(self):
+        body = self.run_body(code='fn main() { println!("== a ==\nhi"); }')
+        code, _, data = self.ask("POST", "/run", body=body, token=self.state.token,
+                                 origin=f"http://127.0.0.1:{self.port}")
+        self.assertEqual(code, 200)
+        got = _json.loads(data)
+        self.assertTrue(got["ok"] and got["compiled"])
+        self.assertEqual(got["output"], "== a ==\nhi\n")
+        self.assertEqual((got["exit"], got["runner"]), (0, "local"))
+        self.assertEqual(got["file"], "src/bin/03_slot_search.rs")
+
+
+class ServeCliTest(unittest.TestCase):
+    def test_serve_is_a_subcommand_of_the_documented_spelling(self):
+        with self.assertRaises(SystemExit) as caught:
+            pa.main(["serve", "--help"])
+        self.assertEqual(caught.exception.code, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

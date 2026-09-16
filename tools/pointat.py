@@ -986,8 +986,13 @@ def _assign(ol: OutLine, site: Site, conf: str, kind: str, also=()) -> None:
     ol.owner, ol.owner_note, ol.drop = site.owner, site.owner_note, site.drop
 
 
-def _match_full(site: Site, lines: list, i: int) -> tuple | None:
-    """(lines covered, pretty-continuation lines) if `site` printed lines[i...]."""
+def _match_full(site: Site, lines: list, i: int, is_header=None) -> tuple | None:
+    """(lines covered, pretty-continuation lines) if `site` printed lines[i...].
+
+    A `{:#?}` value is followed until its brackets balance, but never past a
+    line that starts a section: output can arrive truncated or split, and the
+    closing bracket may never come, in which case the rest of the stream is
+    not this site's."""
     n, k = len(lines), len(site.lines)
     if i + k > n:
         return None
@@ -1002,9 +1007,13 @@ def _match_full(site: Site, lines: list, i: int) -> tuple | None:
     if site.lines[-1].pretty and paren_balance(last) > 0:
         bal, j = paren_balance(last), i + k
         while j < n and bal > 0:
+            if is_header is not None and is_header(lines[j].text):
+                return k, 0          # the value never closed; claim nothing after it
             bal += paren_balance(lines[j].text)
             extra += 1
             j += 1
+        if bal > 0:
+            return k, 0              # ran off the end of a truncated stream
     return k, extra
 
 
@@ -1132,6 +1141,10 @@ def map_run(prog: Program, output: str) -> Mapped:
 
     consumed, cursor, n, i = set(), {}, len(lines), 0
 
+    def is_header(text: str) -> bool:
+        t = text.rstrip()
+        return t.startswith("== ") and any(h.lines[0].regex.match(t) for h in prog.headers)
+
     def local(s: Site, sec: int) -> bool:
         return s.in_main and not s.anywhere and s.section == sec
 
@@ -1170,7 +1183,7 @@ def map_run(prog: Program, output: str) -> Mapped:
                     break
                 if not t.strip() or j in start_at or any(
                         s.lines and not s.wildcard_only and s.id not in consumed
-                        and _in_section(s, lines[j].sec) and _match_full(s, lines, j)
+                        and _in_section(s, lines[j].sec) and _match_full(s, lines, j, is_header)
                         for s in prog.sites):
                     break
                 panic_line(lines[j], L)
@@ -1182,7 +1195,7 @@ def map_run(prog: Program, output: str) -> Mapped:
         for s in prog.sites:
             if s.id in consumed or not s.lines or not _in_section(s, ol.sec):
                 continue
-            m = _match_full(s, lines, i)
+            m = _match_full(s, lines, i, is_header)
             if m:
                 cands.append((s, m))
         if cands:
@@ -1678,7 +1691,17 @@ def render_program(p: Program, cap: dict, mapped: list, ctx: Ctx) -> str:
         rows_html = "".join(diag_rows(d["rendered"], p.path.name, p.stem) for d in diags)
         build = (f'<details class="build" open><summary>cargo build: {what} <kbd>e</kbd></summary>'
                  f'<div class="diag">{rows_html}</div></details>')
+    notes = []
+    if re.search(r"\benv::args", src.mask):
+        notes.append("argv")       # the Playground runs `cargo run` with no arguments
+    if re.search(r"\btype_name\b", src.mask):
+        notes.append("typename")   # the crate is named `playground` there
+    if re.search(r"\{:p\}|as_ptr\(|\.capacity\(", src.mask):
+        notes.append("nondet")     # addresses and capacities differ every run
+    runs_data = [{"cmd": run["cmd"], "args": run["args"]} for run in runs]
     return (f'<article class="ex" id="{esc(p.stem)}" data-kind="program" data-run="1" tabindex="-1"'
+            f' data-file="src/bin/{esc(p.stem)}.rs" data-notes="{" ".join(notes)}"'
+            f' data-runs="{esc(json.dumps(runs_data, ensure_ascii=False))}"'
             f' style="--left:{split_left(code_lens, out_lens)}%">'
             f'<header class="exh"><h2><span class="num">{esc(p.num)}</span> {inline_md(p.title)}</h2>'
             f'{cap_html}<div class="cmds">{cmds}</div>{build}</header>'
@@ -1741,7 +1764,7 @@ PAGE = Template("""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="pointat">
 <title>$title</title>
-<script>document.documentElement.classList.add("js")</script>
+<script>document.documentElement.classList.add("js");window.POINTAT=$config;</script>
 <style>
 $css
 </style>
@@ -1755,7 +1778,7 @@ $css
     <select id="pick" aria-label="choose an example">$options</select>
     <button type="button" class="next" title="next example (n)">&rsaquo;</button>
   </nav>
-  <span class="legend"><kbd>Space</kbd>/<kbd>j</kbd>/<kbd>k</kbd> step sections &middot; click a line to pin &middot; <kbd>n</kbd>/<kbd>p</kbd> example &middot; <kbd>Esc</kbd> clear</span>
+  <span class="legend"><kbd>Space</kbd>/<kbd>j</kbd>/<kbd>k</kbd> step sections &middot; click a line to pin &middot; <kbd>n</kbd>/<kbd>p</kbd> example &middot; <kbd>i</kbd> edit and run</span>
   <span class="size"><button type="button" data-fs="-2" title="smaller (-)">A&minus;</button><button type="button" data-fs="2" title="larger (+)">A+</button></span>
 </header>
 <main>
@@ -1772,6 +1795,8 @@ $js
 
 INCLASS_BACKLINK = '<a href="README.md">CS 326 &middot; Week {n} in class</a>'
 SITE_BACKLINK = '<a href="./">&larr; In Class</a>'
+SERVE_BACKLINK = '<a href="/">CS 326 &middot; served here</a>'
+PLAYGROUND = "https://play.rust-lang.org/execute"
 
 
 def render_index(week: str, topic: str, programs: list, brokens: list, ids: dict, ctx: Ctx,
@@ -1815,12 +1840,22 @@ up the <code>println!</code> that printed it, or click a <code>println!</code> t
 <tr><td><kbd>r</kbd></td><td>next run, for programs run more than once</td></tr>
 <tr><td><kbd>e</kbd></td><td>open or close the explanation (broken files) or the build warnings</td></tr>
 <tr><td><kbd>+</kbd> <kbd>-</kbd></td><td>larger or smaller text (remembered)</td></tr>
+<tr><td><kbd>i</kbd></td><td>edit this program and run it</td></tr>
+<tr><td><kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>&crarr;</kbd></td><td>run what you have edited</td></tr>
+<tr><td><kbd>c</kbd></td><td>compare: the committed page, without losing the edit</td></tr>
 </tbody></table>
 </section>"""
 
 
+def crate_edition(week: str) -> str:
+    toml = REPO / week / "examples" / "Cargo.toml"
+    m = re.search(r'^\s*edition\s*=\s*"(\d{4})"', toml.read_text(encoding="utf-8"), re.M) \
+        if toml.exists() else None
+    return m.group(1) if m else "2021"
+
+
 def render_page(week: str, programs: list, brokens: list, caps: dict, mapped: dict,
-                backlink: str) -> str:
+                backlink: str, cfg: dict | None = None) -> str:
     week_dir = REPO / week
     topic = week_topic(week_dir)
     readme_path = week_dir / "README.md"
@@ -1854,7 +1889,16 @@ def render_page(week: str, programs: list, brokens: list, caps: dict, mapped: di
         week=week,
         title=esc(f"Code and Output: {topic} — CS 326 Week {n}"),
         css=(HERE / "pointat.css").read_text(encoding="utf-8"),
-        js=(HERE / "pointat.js").read_text(encoding="utf-8"),
+        js=((HERE / "pointat.bands.js").read_text(encoding="utf-8")
+            + (HERE / "pointat.js").read_text(encoding="utf-8")
+            + (HERE / "pointat.edit.js").read_text(encoding="utf-8")),
+        config=json.dumps({
+            "tool": "pointat/2", "week": week, "runner": "playground", "endpoint": PLAYGROUND,
+            "channel": "stable", "mode": "debug", "edition": crate_edition(week),
+            "captured_rustc": caps.get("rustc", ""), "timeout": 15,
+            "palette": [sec_style(k) for k in range(9)],
+            **(cfg or {}),
+        }, ensure_ascii=False),
         backlink=backlink,
         bartitle=f"CS 326 &middot; Week {esc(n)} &middot; Code and output",
         options="".join(opts),
@@ -1862,6 +1906,21 @@ def render_page(week: str, programs: list, brokens: list, caps: dict, mapped: di
         articles="\n".join(arts),
         footer=footer,
     )
+
+
+def load_week(week: str) -> tuple:
+    ex = REPO / week / "examples"
+    return ([load_program(f) for f in sorted((ex / "src" / "bin").glob("*.rs"))],
+            [load_broken(f) for f in sorted((ex / "broken").glob("*.rs"))])
+
+
+def build_page(week: str, backlink: str, cfg: dict | None = None) -> str:
+    """A week's page, from the sources on disk and its committed captures."""
+    programs, brokens = load_week(week)
+    caps = json.loads(captures_path(week).read_text(encoding="utf-8"))
+    mapped = {p.stem: [map_run(p, r["output"]) for r in caps["programs"][p.stem]["runs"]]
+              for p in programs if p.stem in caps["programs"]}
+    return render_page(week, programs, brokens, caps, mapped, backlink, cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -1989,6 +2048,12 @@ def normalize_week(arg: str) -> str:
 
 
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "serve":
+        sys.modules.setdefault("pointat", sys.modules[__name__])
+        sys.path.insert(0, str(HERE))
+        import pointat_serve
+        return pointat_serve.serve_main(argv[1:])
     ap = argparse.ArgumentParser(prog="pointat", description=__doc__.split("\n\n")[0],
                                  epilog="See the module docstring (or tools/README.md) for details.")
     ap.add_argument("weeks", nargs="*", help="week directories, e.g. week04")
