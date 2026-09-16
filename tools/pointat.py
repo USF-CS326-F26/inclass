@@ -1844,8 +1844,8 @@ Press <kbd>i</kbd> on a program to edit it and run it. On a phone the two column
 <tr><td><kbd>+</kbd> <kbd>-</kbd></td><td>larger or smaller text (remembered)</td></tr>
 <tr><td><kbd>i</kbd></td><td>edit this program and run it</td></tr>
 <tr><td><kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>&crarr;</kbd></td><td>run what you have edited</td></tr>
-<tr><td><kbd>c</kbd></td><td>compare your run with the committed one, line by line
-(press <kbd>Esc</kbd> first if you are typing)</td></tr>
+<tr><td><kbd>c</kbd></td><td>compare: what you changed in the code, and what changed in the
+output (press <kbd>Esc</kbd> first if you are typing)</td></tr>
 <tr><td><kbd>o</kbd></td><td>on a narrow screen, switch between the code and the output column</td></tr>
 </tbody></table>
 </section>"""

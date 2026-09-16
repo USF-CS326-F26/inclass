@@ -117,10 +117,14 @@ the program is compiled and run for real.
   sections, so the two sides still line up. Per-line links are not drawn for a
   fresh run: they are only as good as the mapping, and the mapping is only
   certain about the captured output. Revert brings them back.
-- **Compare** (<kbd>c</kbd>) puts the committed output beside yours, one row
-  per section, with the lines that differ marked. Blank lines are ignored, and
-  it says so when the program prints addresses, which differ on every run
-  anyway. **Revert** puts the original back, code and output both.
+- **Compare** (<kbd>c</kbd>) shows two diffs, both committed on the left and
+  yours on the right. First **the code you changed**: the differing lines with
+  three lines of context, numbered, with the unchanged stretches collapsed to
+  a count. Then **what it printed**: the committed output beside your run's,
+  one row per section, with the lines that differ marked. Blank lines are
+  ignored, and it says so when the two runs came from different compilers or
+  when the program prints addresses, which differ on every run anyway.
+  **Revert** puts the original back, code and output both.
 - The keys that are single letters only work when the editor does not have
   focus, because everything else you type belongs in the editor. <kbd>Esc</kbd>
   leaves the editor, and the buttons always work.

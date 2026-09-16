@@ -364,9 +364,14 @@ a.xref { color: inherit; text-decoration: underline; text-decoration-color: var(
 /* ---- compare: the committed run beside yours ----------------------------- */
 .cmpview { display: none; border-top: 1px solid var(--rule); background: var(--out-bg); }
 .live[data-view="compare"] .cmpview { display: block; }
-.live[data-view="compare"] .epanes { grid-template-columns: minmax(0, 1fr); }
-.live[data-view="compare"] .ed { height: 30vh; }
-.live[data-view="compare"] .fresh { display: none; }
+.live[data-view="compare"] .epanes { display: none; }
+.cmpview { max-height: 78vh; overflow: auto; }
+.cmpsub { border-top: 1px solid var(--rule); }
+.cmpsub:first-child { border-top: 0; }
+.cmpsub .what {
+  padding: 5px 10px 3px; font-family: var(--ui); font-size: 0.8em; font-weight: 700;
+  color: var(--primary); background: #eef2f0;
+}
 .cmphead {
   display: grid; grid-template-columns: 1fr 1fr;
   font-family: var(--ui); font-size: 0.8em; font-weight: 700; color: var(--primary);
@@ -385,6 +390,15 @@ a.xref { color: inherit; text-decoration: underline; text-decoration-color: var(
   min-height: calc(var(--lh) * 1em);
 }
 .cmprow .badge { left: 2px; }
+.cmprow.num { padding-left: 7.4ch; }
+.cmprow .n {
+  position: absolute; left: 2.8ch; width: 3.8ch; text-align: right;
+  color: var(--ln); user-select: none; -webkit-user-select: none;
+}
+.cmpfill {
+  padding: 1px 8px 1px 4.4ch; color: var(--muted); background: #f1f3f5;
+  font-family: var(--ui); font-size: 0.75em;
+}
 .cmprow.none { background: repeating-linear-gradient(135deg, #f1f3f5 0 5px, #f7f9fa 5px 10px); }
 .cmprow.gone { background: #fdecea; }
 .cmprow.new { background: #e6f4ea; }

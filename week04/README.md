@@ -61,9 +61,9 @@ with `python3 tools/pointat.py week04` (see `tools/README.md`).
 
 Press `i` on any program to edit it in the page and run it: the code runs on
 the Rust Playground, or on this machine when the page is served with
-`python3 tools/pointat.py serve week04`. Compare puts the committed output beside
-yours with the differing lines marked, and Revert puts the original back. On a phone,
-a Code/Output switch shows one column at a time.
+`python3 tools/pointat.py serve week04`. Compare shows what you changed in the code
+and what changed in the output, side by side, and Revert puts the original back. On a
+phone, a Code/Output switch shows one column at a time.
 
 ## The twelve programs
 

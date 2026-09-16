@@ -71,8 +71,8 @@
   function diffLines(a, b) {
     var n = a.length, m = b.length;
     if (n * m > 600000) {                  // far past anything worth aligning
-      return a.map(function (l) { return { left: l, right: null }; })
-        .concat(b.map(function (r) { return { left: null, right: r }; }));
+      return a.map(function (l, i) { return { left: l, right: null, li: i + 1, ri: null }; })
+        .concat(b.map(function (r, i) { return { left: null, right: r, li: null, ri: i + 1 }; }));
     }
     var lcs = [];
     for (var i = 0; i <= n; i++) lcs.push(new Uint32Array(m + 1));
@@ -86,12 +86,20 @@
     i = 0;
     j = 0;
     while (i < n && j < m) {
-      if (a[i] === b[j]) { pairs.push({ left: a[i], right: b[j], same: true }); i++; j++; }
-      else if (lcs[i + 1][j] >= lcs[i][j + 1]) { pairs.push({ left: a[i], right: null }); i++; }
-      else { pairs.push({ left: null, right: b[j] }); j++; }
+      if (a[i] === b[j]) {
+        pairs.push({ left: a[i], right: b[j], li: i + 1, ri: j + 1, same: true });
+        i++;
+        j++;
+      } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+        pairs.push({ left: a[i], right: null, li: i + 1, ri: null });
+        i++;
+      } else {
+        pairs.push({ left: null, right: b[j], li: null, ri: j + 1 });
+        j++;
+      }
     }
-    while (i < n) pairs.push({ left: a[i++], right: null });
-    while (j < m) pairs.push({ left: null, right: b[j++] });
+    while (i < n) { pairs.push({ left: a[i], right: null, li: i + 1, ri: null }); i++; }
+    while (j < m) { pairs.push({ left: null, right: b[j], li: null, ri: j + 1 }); j++; }
     return pairs;
   }
 
@@ -108,13 +116,87 @@
     return { map: map, order: order };
   }
 
+  function diffRow(pair, side, showNum) {
+    var text = side === "left" ? pair.left : pair.right;
+    var cls = "cmprow" + (showNum ? " num" : "") +
+      (text === null ? " none" : pair.same ? "" : (side === "left" ? " gone" : " new"));
+    var row = el("div", cls);
+    if (showNum) {
+      var n = side === "left" ? pair.li : pair.ri;
+      row.appendChild(el("span", "n", n === null ? "" : String(n)));
+    }
+    row.appendChild(doc.createTextNode(text === null ? "" : text || "\u00a0"));
+    return row;
+  }
+
+  /* What you changed in the source: the differing lines with three lines of
+     context, and a marker where unchanged stretches were left out. */
+  function renderCodeDiff(st, box) {
+    var a = (st.source || "").split("\n"), b = st.ta.value.split("\n");
+    if (a.length && a[a.length - 1] === "") a.pop();
+    if (b.length && b[b.length - 1] === "") b.pop();
+    var pairs = diffLines(a, b);
+    var gone = 0, added = 0;
+    pairs.forEach(function (p) {
+      if (p.same) return;
+      if (p.left !== null) gone++;
+      else added++;
+    });
+    var changed = gone + added;
+
+    box.appendChild(sub("the code you changed", "committed", "yours", tally(gone, added)));
+    if (!changed) {
+      box.appendChild(el("div", "fmsg", "the source is exactly the committed example"));
+      return;
+    }
+    var keep = {}, CONTEXT = 3;
+    pairs.forEach(function (p, i) {
+      if (p.same) return;
+      for (var k = Math.max(0, i - CONTEXT); k <= Math.min(pairs.length - 1, i + CONTEXT); k++) keep[k] = true;
+    });
+    var grid = el("div", "cmpgrid"), left = el("div", "cmpcell"), right = el("div", "cmpcell");
+    var gap = 0;
+    pairs.forEach(function (p, i) {
+      if (!keep[i]) { gap++; return; }
+      if (gap) {
+        left.appendChild(el("div", "cmpfill", "\u22ef " + gap + " unchanged"));
+        right.appendChild(el("div", "cmpfill", "\u22ef " + gap + " unchanged"));
+        gap = 0;
+      }
+      left.appendChild(diffRow(p, "left", true));
+      right.appendChild(diffRow(p, "right", true));
+    });
+    grid.appendChild(left);
+    grid.appendChild(right);
+    box.appendChild(grid);
+  }
+
+  function tally(gone, added) {
+    if (!gone && !added) return "unchanged";
+    var bits = [];
+    if (gone) bits.push(gone + " removed");
+    if (added) bits.push(added + " added");
+    return bits.join(" \u00b7 ");
+  }
+
+  function sub(title, leftLabel, rightLabel, note) {
+    var wrap = el("div", "cmpsub");
+    wrap.appendChild(el("div", "what", title + (note ? " \u00b7 " + note : "")));
+    var head = el("div", "cmphead");
+    head.appendChild(el("span", "side", leftLabel));
+    head.appendChild(el("span", "side", rightLabel));
+    wrap.appendChild(head);
+    return wrap;
+  }
+
   function renderCompare(st) {
     var box = st.cmp;
     box.textContent = "";
+    renderCodeDiff(st, box);
     if (!st.last || !st.last.compiled) {
       box.appendChild(el("div", "fmsg", st.last
-        ? "your edit does not compile, so there is nothing to compare yet"
-        : "run it first (\u2318\u23ce), then compare"));
+        ? "your edit does not compile, so there is no output to compare"
+        : "run it (\u2318\u23ce) to compare the output too"));
       return;
     }
     // st.grid is the captured grid, detached while the editor is up.
@@ -130,17 +212,12 @@
     });
     var fresh = bySection(freshRows);
 
-    var head = el("div", "cmphead");
-    head.appendChild(el("span", "side", "committed \u00b7 " + (CFG.captured_rustc || "the capture")));
-    head.appendChild(el("span", "side", "yours \u00b7 " + (st.last.runner || "")));
-    box.appendChild(head);
-
     var seen = {}, sections = [];
     committed.order.concat(fresh.order).forEach(function (k) {
       if (!seen[k]) { seen[k] = true; sections.push(k); }
     });
     sections.sort(function (x, y) { return x - y; });
-    var changed = 0;
+    var gone = 0, added = 0;
     var grid = el("div", "cmpgrid");
     sections.forEach(function (k) {
       var pairs = diffLines(committed.map[k] || [], fresh.map[k] || []);
@@ -150,25 +227,25 @@
         right.setAttribute("style", style(k));
       }
       pairs.forEach(function (pr, idx) {
-        if (!pr.same) changed++;
-        var l = el("div", "cmprow" + (pr.left === null ? " none" : pr.same ? "" : " gone"));
-        var r = el("div", "cmprow" + (pr.right === null ? " none" : pr.same ? "" : " new"));
-        if (k && idx === 0) {
-          l.appendChild(el("span", "badge", String(k)));
-          r.appendChild(el("span", "badge", String(k)));
+        if (!pr.same) {
+          if (pr.left !== null) gone++;
+          else added++;
         }
-        l.appendChild(doc.createTextNode(pr.left === null ? "" : pr.left || "\u00a0"));
-        r.appendChild(doc.createTextNode(pr.right === null ? "" : pr.right || "\u00a0"));
+        var l = diffRow(pr, "left", false), r = diffRow(pr, "right", false);
+        if (k && idx === 0) {
+          l.insertBefore(el("span", "badge", String(k)), l.firstChild);
+          r.insertBefore(el("span", "badge", String(k)), r.firstChild);
+        }
         left.appendChild(l);
         right.appendChild(r);
       });
       grid.appendChild(left);
       grid.appendChild(right);
     });
+    box.appendChild(sub("what it printed", "committed \u00b7 " + (CFG.captured_rustc || "the capture"),
+      "yours \u00b7 " + (st.last.runner || ""), gone || added ? tally(gone, added) : "identical"));
     box.appendChild(grid);
-    box.appendChild(el("div", "fmsg", changed
-      ? changed + (changed === 1 ? " line differs" : " lines differ") + " from the committed run"
-      : "every line is the same as the committed run"));
+    var changed = gone + added;
     if ((st.art.dataset.notes || "").indexOf("nondet") >= 0) {
       box.appendChild(el("div", "fmsg", "this program prints addresses or capacities, " +
         "so those lines differ on every run, edit or no edit."));
