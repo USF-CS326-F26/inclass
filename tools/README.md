@@ -61,6 +61,11 @@ The page is only as good as these, and every existing program follows them:
 - `main` prints `println!("== title ==")` for the first section and
   `println!("\n== title ==")` for the rest, directly in `main`, not in a
   loop or helper.
+- A `// fold: …` line directly above an item outside `main` (doc comments,
+  attributes and blank lines may sit between) makes the page show that item
+  folded to the comment line, the way the `//!` header is. Use it for code
+  students should not read by accident, such as an exercise's answer. Put it
+  anywhere else and the generator stops with the line number.
 - Broken files start with a `//` block of at most 12 lines: the error line,
   a blank `//`, the explanation, a blank `//`, then `// FIX 1:` … lines.
 - The week's `README.md` tables `| Program | The one idea | The line to point at |`

@@ -5,6 +5,7 @@ weekNN/examples corpus; the file:line each one imitates is in its comment.
     python3 -m unittest tools/test_pointat.py
 """
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -108,6 +109,48 @@ class StructureTest(unittest.TestCase):
         self.assertEqual([ol.sec for ol in m.lines], [0, 1, 1, 2, 2, 2])
         self.assertEqual([(ol.src, ol.conf) for ol in m.lines if ol.text.startswith("== not")],
                          [(10, "confident")] * 2)
+
+    def test_fold_covers_the_item_under_it(self):
+        # week04/.../12_argv_and_write_all.rs:79-90
+        src = (
+            "//! 99 — T.\n"                   # 1
+            "//! Run:  cargo run --bin t\n"   # 2
+            "struct A;\n"                     # 3
+            "// fold: the answer\n"           # 4
+            "\n"                              # 5
+            "/// doc\n"                       # 6
+            "#[inline]\n"                     # 7
+            "fn run() -> i32 {\n"             # 8
+            "    0\n"                         # 9
+            "}\n"                             # 10
+            "fn main() {\n"                   # 11
+            '    println!("== a ==");\n'      # 12
+            "    let _ = run();\n"            # 13
+            "}\n"                             # 14
+        )
+        p = program(src)
+        self.assertEqual(p.folds, [(4, 10)])
+        cap = {"runs": [{"cmd": "cargo run --bin t", "args": [], "output": "== a ==\n",
+                         "exit": 0, "timed_out": False}]}
+        ctx = pa.Ctx("week99", {}, {})
+        page = pa.render_program(p, cap, [pa.map_run(p, "== a ==\n")], ctx)
+        self.assertIn('<details class="doc fold"><summary><span class="ln" data-l="1"', page)
+        self.assertIn('<details class="fold"><summary><span class="ln" data-l="4"', page)
+        self.assertIn("▸ 6 more lines", page)
+        body = page[page.index('data-l="4"'):page.index("</details>", page.index('data-l="4"'))]
+        self.assertEqual(re.findall(r'data-l="(\d+)"', body), [str(L) for L in range(4, 11)])
+        self.assertEqual(page.count("<details"), page.count("</details>"))
+
+    def test_fold_must_sit_on_an_item_outside_main(self):
+        inside = 'fn main() {\n    // fold: no\n    fn f() {}\n    println!("== a ==");\n}\n'
+        gap = "// fold: no\nconst N: u8 = 1;\nfn f() {}\nfn main() {}\n"
+        on_main = "// fold: no\nfn main() {}\n"
+        twice = "// fold: a\n// fold: b\nfn f() {}\nfn main() {}\n"
+        for src in (inside, gap, on_main, twice):
+            with self.subTest(src=src), self.assertRaises(SystemExit):
+                program(src)
+        in_string = 'const S: &str = "\n// fold: text, not a marker\n";\nfn main() {}\n'
+        self.assertEqual(program(in_string).folds, [])
 
     def test_silent_sections_after_exit(self):
         src = 'fn main() {\n    println!("== a ==");\n    std::process::exit(0);\n    println!("\\n== b ==");\n}\n'

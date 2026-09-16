@@ -637,6 +637,7 @@ class Program:
     headers: list
     ranges: dict        # section -> (first line, last line); may be empty (lo > hi)
     has_raw: bool
+    folds: list = field(default_factory=list)   # [(marker line, item's last line)]
 
 
 def parse_runs(doc_lines: list, stem: str) -> list:
@@ -669,6 +670,34 @@ def parse_runs(doc_lines: list, stem: str) -> list:
         env = dict(e.split("=", 1) for e in m.group(1).split())
         runs.append(((m.group(1) + "cargo run" + m.group(2)).strip(), args, env))
     return runs or [("cargo run --bin " + stem, [], {})]
+
+
+FOLD_RE = re.compile(r"[ \t]*//[ \t]*fold:")
+
+
+def find_folds(src: Source) -> list:
+    """(first, last) line of each `// fold:` comment together with the item
+    directly under it, which the page shows folded to the comment line.  Only
+    doc comments, attributes and blank lines may sit between the two, and the
+    item must be outside every block, so it is never part of a section."""
+    folds = []
+    for i, line in enumerate(src.lines, 1):
+        if not FOLD_RE.match(line):
+            continue
+        at = src.starts[i - 1] + line.index("//")
+        tok = src.tok_at.get(at)
+        if tok is None or tok[2] != "c":
+            continue
+        item = next((b for b in src.blocks if b.open > at and not src.enclosing(b.open)), None)
+        ok = (item is not None and not src.enclosing(at) and item.kind in ("fn", "impl", "item")
+              and not re.search(r"\bfn\s+main\b", item.head)
+              and item.open - len(statement_head(src.mask, item.open)) <= at
+              and not (folds and folds[-1][1] >= i))
+        if not ok:
+            raise SystemExit(f"{src.path}:{i}: `// fold:` must sit directly above an item "
+                             "with a body, outside fn main and outside any other fold")
+        folds.append((i, src.line_of(item.close)))
+    return folds
 
 
 def load_program(path: Path, text: str | None = None) -> Program:
@@ -706,7 +735,7 @@ def load_program(path: Path, text: str | None = None) -> Program:
             s.section = next((k for k, (lo, hi) in ranges.items() if lo <= s.line <= hi), 0)
     return Program(stem, path, src, num, title, doc_end, parse_runs(src.lines[:doc_end], stem),
                    main_open, main_close, sites, headers, ranges,
-                   RAW_WRITE_RE.search(src.mask) is not None)
+                   RAW_WRITE_RE.search(src.mask) is not None, find_folds(src))
 
 
 FIX_RE = re.compile(r"FIX(?:\s+\d+)?:\s*")
@@ -1610,18 +1639,33 @@ def render_program(p: Program, cap: dict, mapped: list, ctx: Ctx) -> str:
             extra, attrs = "ps", f' data-p="{site_line[L]}"'
         return code_row(src, L, render_line(src, L, cls, marks, info), extra=extra, attrs=attrs, **kw)
 
+    def fold(first: int, last: int, kind: str) -> list:
+        more = last - first
+        tail = f'<span class="more">▸ {more} more line{"s" if more != 1 else ""}</span>' if more else ""
+        return ([f'<details class="{kind}"><summary>' + crow(first, tag="span", tail=tail) + "</summary>"]
+                + [crow(L) for L in range(first + 1, last + 1)] + ["</details>"])
+
+    fold_end = dict(p.folds)
+
+    def folded(lo: int, hi: int) -> list:
+        out, L = [], lo
+        while L <= hi:
+            if L in fold_end:
+                out += fold(L, fold_end[L], "fold")
+                L = fold_end[L] + 1
+            else:
+                out.append(crow(L))
+                L += 1
+        return out
+
     runs = cap["runs"]
     cells = []
     pre = []
     first_code = 1
     if p.doc_end:
-        more = p.doc_end - 1
-        tail = f'<span class="more">▸ {more} more line{"s" if more != 1 else ""}</span>' if more else ""
-        pre.append('<details class="doc"><summary>' + crow(1, tag="span", tail=tail) + "</summary>")
-        pre += [crow(L) for L in range(2, p.doc_end + 1)]
-        pre.append("</details>")
+        pre += fold(1, p.doc_end, "doc fold")
         first_code = p.doc_end + 1
-    pre += [crow(L) for L in range(first_code, p.main_open + 1)]
+    pre += folded(first_code, p.main_open)
     cells.append(f'<div class="cell code pre">{"".join(pre)}</div><div class="cell out pre"></div>')
 
     for k in sorted(p.ranges):
@@ -1657,7 +1701,7 @@ def render_program(p: Program, cap: dict, mapped: list, ctx: Ctx) -> str:
         cells.append(f'<div class="cell code{sec_cls}"{attrs}>{"".join(rows)}</div>'
                      f'<div class="cell out{sec_cls}"{attrs.replace(" id=", " data-id=")}>{"".join(outs)}</div>')
 
-    post = [crow(L) for L in range(p.main_close, len(src.lines) + 1)]
+    post = folded(p.main_close, len(src.lines))
     exits = []
     for r, run in enumerate(runs, 1):
         if run["timed_out"]:
@@ -1987,6 +2031,7 @@ def dump_week(week: str, programs: list, brokens: list, mapped: dict) -> dict:
         out["programs"].append({
             "stem": p.stem, "main": [p.main_open, p.main_close],
             "sections": {str(k): list(v) for k, v in p.ranges.items()},
+            "folds": [list(f) for f in p.folds],
             "runs": [
                 {"cmd": cmd, "silent": mr.silent, "unexpected": mr.unexpected,
                  "lines": [[i + 1, ol.sec, ol.text, ol.src, ol.conf, ol.kind, ol.also]

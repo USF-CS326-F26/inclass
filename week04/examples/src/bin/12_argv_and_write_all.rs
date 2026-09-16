@@ -1,7 +1,7 @@
 //! 12 — argv in, bytes out, and the slice that is re-pointed, not copied.
 //!
-//! Everything below the line `// ---- the command ----` is 10c's `echo`, as
-//! it will be on rv6. Everything above it is a 40-line stand-in for ulib: an
+//! The folded `// fold:` block below is 10c's `echo`, as it will be on rv6;
+//! open it once yours passes. Above it is a 40-line stand-in for ulib: an
 //! `Args` over `&[&[u8]]`, a `write` that may accept FEWER bytes than it was
 //! given, and the `write_all` that copes:
 //!
@@ -76,7 +76,7 @@ impl<'a> Args<'a> {
     }
 }
 
-// ---- the command ---------------------------------------------------------
+// fold: ---- the command: 10c's echo, solved. Write yours first. -----------
 
 /// 10c's `echo`. This function would be byte-identical on rv6.
 fn run(args: Args) -> i32 {

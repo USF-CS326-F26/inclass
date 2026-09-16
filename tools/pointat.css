@@ -219,15 +219,15 @@ details.why { margin: 0 0 10px; font-family: var(--ui); font-size: calc(var(--fs
 .exit { padding-left: var(--gut); color: var(--muted); font-family: var(--ui); font-size: 0.8em; }
 .cmdline { padding-left: 1.2ch; color: var(--muted); }
 
-/* the //! header, folded to its first line */
-details.doc > summary { list-style: none; cursor: pointer; }
-details.doc > summary::-webkit-details-marker { display: none; }
-details.doc .more {
+/* the //! header and each `// fold:` item, folded to their first line */
+details.fold > summary { list-style: none; cursor: pointer; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold .more {
   margin-left: 1.5ch; padding: 0 0.5em; border-radius: 4px; background: #eef1f4; color: var(--muted);
   font-family: var(--ui); font-size: 0.75em; white-space: nowrap;
   user-select: none; -webkit-user-select: none;
 }
-details.doc[open] .more { display: none; }
+details.fold[open] .more { display: none; }
 
 /* syntax (a11y-light) */
 .k { color: var(--tk-k); }
