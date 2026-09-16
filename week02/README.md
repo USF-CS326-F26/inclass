@@ -43,8 +43,9 @@ with `python3 tools/pointat.py week02` (see `tools/README.md`).
 
 Press `i` on any program to edit it in the page and run it: the code runs on
 the Rust Playground, or on this machine when the page is served with
-`python3 tools/pointat.py serve week02`. `c` compares your run with the committed
-one, and Revert puts the original back.
+`python3 tools/pointat.py serve week02`. Compare puts the committed output beside
+yours with the differing lines marked, and Revert puts the original back. On a phone,
+a Code/Output switch shows one column at a time.
 
 ## The ten programs
 

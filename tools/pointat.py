@@ -1822,7 +1822,9 @@ def render_index(week: str, topic: str, programs: list, brokens: list, ids: dict
 <p class="lede">Every program in <code>examples/src/bin/</code> beside the output it printed, and every
 file in <code>examples/broken/</code> beside what <code>rustc</code> said about it. Each coloured,
 numbered section of code sits in the same row as the output it produced. Click an output line to light
-up the <code>println!</code> that printed it, or click a <code>println!</code> to find its output.</p>
+up the <code>println!</code> that printed it, or click a <code>println!</code> to find its output.
+Press <kbd>i</kbd> on a program to edit it and run it. On a phone the two columns do not fit, so a
+<b>Code</b>/<b>Output</b> switch shows one at a time.</p>
 <h2>The programs</h2>
 <table class="list"><thead><tr><th></th><th>Program</th><th>The one idea</th><th>The line to point at</th><th>Sections</th></tr></thead>
 <tbody>{"".join(prog_rows)}</tbody></table>
@@ -1842,7 +1844,9 @@ up the <code>println!</code> that printed it, or click a <code>println!</code> t
 <tr><td><kbd>+</kbd> <kbd>-</kbd></td><td>larger or smaller text (remembered)</td></tr>
 <tr><td><kbd>i</kbd></td><td>edit this program and run it</td></tr>
 <tr><td><kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>&crarr;</kbd></td><td>run what you have edited</td></tr>
-<tr><td><kbd>c</kbd></td><td>compare: the committed page, without losing the edit</td></tr>
+<tr><td><kbd>c</kbd></td><td>compare your run with the committed one, line by line
+(press <kbd>Esc</kbd> first if you are typing)</td></tr>
+<tr><td><kbd>o</kbd></td><td>on a narrow screen, switch between the code and the output column</td></tr>
 </tbody></table>
 </section>"""
 

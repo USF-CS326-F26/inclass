@@ -1,7 +1,7 @@
 {
  "tool": "pointat/1",
  "week": "week02",
- "captured_at": "2026-09-15T17:35:20-07:00",
+ "captured_at": "2026-09-16T12:33:44-07:00",
  "rustc": "rustc 1.89.0 (29483883e 2025-08-04)",
  "cargo": "cargo 1.89.0 (c24e10642 2025-06-23)",
  "os": "macOS 26.6.2 arm64",
@@ -45,7 +45,7 @@
     {
      "cmd": "cargo run --bin 03_stack_and_heap",
      "args": [],
-     "output": "== a fixed-size value is the whole value ==\nn = 4096   lives at stack address 0x16b735a68   size 8 bytes\n\n== a String is a handle to somewhere else ==\nhandle on the stack at 0x16b735b50, 24 bytes wide (ptr, len, cap)\n  ptr -> 0x104ef5e10   len = 6   cap = 6\n  the bytes [107, 101, 114, 110, 101, 108] are NOT at 0x16b735b50; they are at 0x104ef5e10\n\n== growth moves the buffer, not the handle ==\nhandle stays at 0x16b735db8 for the whole loop\n  push(0) len=1 cap=2 buf=0x104ef5c90\n  push(1) len=2 cap=2 buf=0x104ef5c90\n  push(2) len=3 cap=4 buf=0x104ef5c90  <- grew: allocator extended it in place, same address\n  push(3) len=4 cap=4 buf=0x104ef5c90\n  push(4) len=5 cap=8 buf=0x104ef5ca0  <- grew: new buffer, old one copied and freed\n  push(5) len=6 cap=8 buf=0x104ef5ca0\n\n== &str: a borrowed view, no ownership at all ==\nowned buffer 0x104ef5c90, view 0x104ef5c92  <- same memory, offset by 2\nsize_of::<String>() = 24   size_of::<&str>() = 16\n\n== a literal is not on the heap either ==\n\"compiled into .rodata\" at 0x104703a83\n\n== the release point is visible ==\n  inside the block: 0x992c00960 holds \"freed at the closing brace\"\n  after the block: that allocation is already gone\n",
+     "output": "== a fixed-size value is the whole value ==\nn = 4096   lives at stack address 0x16b13da68   size 8 bytes\n\n== a String is a handle to somewhere else ==\nhandle on the stack at 0x16b13db50, 24 bytes wide (ptr, len, cap)\n  ptr -> 0x1053b1e10   len = 6   cap = 6\n  the bytes [107, 101, 114, 110, 101, 108] are NOT at 0x16b13db50; they are at 0x1053b1e10\n\n== growth moves the buffer, not the handle ==\nhandle stays at 0x16b13ddb8 for the whole loop\n  push(0) len=1 cap=2 buf=0x1053b1c90\n  push(1) len=2 cap=2 buf=0x1053b1c90\n  push(2) len=3 cap=4 buf=0x1053b1c90  <- grew: allocator extended it in place, same address\n  push(3) len=4 cap=4 buf=0x1053b1c90\n  push(4) len=5 cap=8 buf=0x1053b1ca0  <- grew: new buffer, old one copied and freed\n  push(5) len=6 cap=8 buf=0x1053b1ca0\n\n== &str: a borrowed view, no ownership at all ==\nowned buffer 0x1053b1c90, view 0x1053b1c92  <- same memory, offset by 2\nsize_of::<String>() = 24   size_of::<&str>() = 16\n\n== a literal is not on the heap either ==\n\"compiled into .rodata\" at 0x104cfba83\n\n== the release point is visible ==\n  inside the block: 0x1053b1cc0 holds \"freed at the closing brace\"\n  after the block: that allocation is already gone\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -59,7 +59,7 @@
     {
      "cmd": "cargo run --bin 04_move",
      "args": [],
-     "output": "== assignment moves ==\na's buffer was 0x10320de30\nb's buffer is  0x10320de30   <- identical: nothing was copied\nbut `a` is no longer a usable name (uncomment the line to see E0382)\n\n== passing to a function moves too ==\ncaller owns 0x10320de40\n  consume() now owns 0x10320de40 (\"page 0x8000_5000\")\ncaller no longer owns anything\n\n== if the caller still needs it, hand it back ==\nreturned to caller: \"boot | kalloc ready | mmu on\"\n\n== moves out of collections are blocked, not silent ==\nborrowed v[0] = \"a\"; v is still whole with 2 items\ncloned v[0] = \"a\" at a different buffer 0x10320dd00 vs 0x10320de40\n\n== a move is not a memcpy of the data ==\nmoved an 8 MiB Vec by copying 24 bytes of stack: buffer still 0x656000000\n",
+     "output": "== assignment moves ==\na's buffer was 0x104e81e30\nb's buffer is  0x104e81e30   <- identical: nothing was copied\nbut `a` is no longer a usable name (uncomment the line to see E0382)\n\n== passing to a function moves too ==\ncaller owns 0x104e81e40\n  consume() now owns 0x104e81e40 (\"page 0x8000_5000\")\ncaller no longer owns anything\n\n== if the caller still needs it, hand it back ==\nreturned to caller: \"boot | kalloc ready | mmu on\"\n\n== moves out of collections are blocked, not silent ==\nborrowed v[0] = \"a\"; v is still whole with 2 items\ncloned v[0] = \"a\" at a different buffer 0x104e81d00 vs 0x104e81e40\n\n== a move is not a memcpy of the data ==\nmoved an 8 MiB Vec by copying 24 bytes of stack: buffer still 0x612000000\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -73,7 +73,7 @@
     {
      "cmd": "cargo run --bin 05_copy_types",
      "args": [],
-     "output": "== scalars copy ==\nx = 5, y = 5   both still usable; separate slots 0x16d7edc48 0x16d7edc4c\n\n== a Copy struct copies ==\na = Pte { ppn: 524293, flags: 0 }  at 0x16d7edd68\nb = Pte { ppn: 524293, flags: 7 }  at 0x16d7edd78   <- independent 16-byte copy\n\n== arrays of Copy types copy ==\nt1[0] = Pte { ppn: 1, flags: 1 }\nt2[0] = Pte { ppn: 99, flags: 1 }   <- t1 untouched\n\n== a type that owns something moves instead ==\nd2 = Device { name: \"uart0\" }   (d1 is moved-from; Device owns a String)\nclone -> different buffers: 0x102e3de70 vs 0x102e3dcf0\n\n== Copy XOR Drop ==\nA destructor means one release point. A copy means many values.\nRust refuses the combination — that is the double free, rejected.\n\n== references are Copy; what they point at is not ==\nr1 = \"free list\" r2 = \"free list\"  both point at 0x102e3dd00\n",
+     "output": "== scalars copy ==\nx = 5, y = 5   both still usable; separate slots 0x16aec1c48 0x16aec1c4c\n\n== a Copy struct copies ==\na = Pte { ppn: 524293, flags: 0 }  at 0x16aec1d68\nb = Pte { ppn: 524293, flags: 7 }  at 0x16aec1d78   <- independent 16-byte copy\n\n== arrays of Copy types copy ==\nt1[0] = Pte { ppn: 1, flags: 1 }\nt2[0] = Pte { ppn: 99, flags: 1 }   <- t1 untouched\n\n== a type that owns something moves instead ==\nd2 = Device { name: \"uart0\" }   (d1 is moved-from; Device owns a String)\nclone -> different buffers: 0x1054e9e70 vs 0x1054e9cf0\n\n== Copy XOR Drop ==\nA destructor means one release point. A copy means many values.\nRust refuses the combination — that is the double free, rejected.\n\n== references are Copy; what they point at is not ==\nr1 = \"free list\" r2 = \"free list\"  both point at 0x1054e9d00\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -101,7 +101,7 @@
     {
      "cmd": "cargo run --bin 07_borrow_shared",
      "args": [],
-     "output": "== lending instead of giving ==\ncount = 3\nfirst = 0x80001000\nthe caller still owns `list`: 3 pages\n\n== many readers at once ==\nr1 0x16dbb1e60  r2 0x16dbb1e60  r3 -> buffer 0x1022edc50\nall three point at the same memory; none of them can change it\n\n== a borrow cannot outlive the owner ==\nreturned an owned String \"kernel\" instead of a reference to dead stack\n\n== borrows end at their LAST USE, not the closing brace ==\nsum = 6\npushed; v = [1, 2, 3, 4]\n\n== &T is Copy, so passing it along is free ==\n  show() sees \"uart0\" at 0x1022edc70\n  show() sees \"uart0\" at 0x1022edc70\nstill owned by main: \"uart0\"\n",
+     "output": "== lending instead of giving ==\ncount = 3\nfirst = 0x80001000\nthe caller still owns `list`: 3 pages\n\n== many readers at once ==\nr1 0x16bc0de60  r2 0x16bc0de60  r3 -> buffer 0xc510009a0\nall three point at the same memory; none of them can change it\n\n== a borrow cannot outlive the owner ==\nreturned an owned String \"kernel\" instead of a reference to dead stack\n\n== borrows end at their LAST USE, not the closing brace ==\nsum = 6\npushed; v = [1, 2, 3, 4]\n\n== &T is Copy, so passing it along is free ==\n  show() sees \"uart0\" at 0x104291c50\n  show() sees \"uart0\" at 0x104291c50\nstill owned by main: \"uart0\"\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -129,7 +129,7 @@
     {
      "cmd": "cargo run --bin 09_slices",
      "args": [],
-     "output": "== a window into an array ==\nbuf     [10, 11, 12, 13, 14, 15, 16, 17] at 0x16f255a60\n&buf[2..5] [12, 13, 14] at 0x16f255a62  <- same memory, offset 2, len 3\nsize_of::<&[u8]>() = 16 bytes (ptr + len)\n\n== one function, any backing storage ==\nchecksum(array)   = 108\nchecksum(vec)     = 10\nchecksum(array)   = 27\nchecksum(slice)   = 39\n\n== &str is a slice of UTF-8 bytes ==\ntag  = \"kalloc:\"\naddr = \" 0x8000_5000\"\nboth point into the ONE buffer at 0x703000960: 0x703000960 and 0x703000967\n\n== mutable slices write through ==\npage = [aa, aa, aa, aa, aa, aa, aa, aa, 55, 55, 55, 55, 55, 55, 55, 55]\n\n== length is checked, not trusted ==\nbuf.get(20) = None   <- None, not a wild read\nbuf.get(2..5) = [12, 13, 14]\n\n== chunks: how you walk a page table or a disk block ==\n  entry 0: [aa, aa, aa, aa]\n  entry 1: [aa, aa, aa, aa]\n  entry 2: [55, 55, 55, 55]\n  entry 3: [55, 55, 55, 55]\n",
+     "output": "== a window into an array ==\nbuf     [10, 11, 12, 13, 14, 15, 16, 17] at 0x16d3b9a60\n&buf[2..5] [12, 13, 14] at 0x16d3b9a62  <- same memory, offset 2, len 3\nsize_of::<&[u8]>() = 16 bytes (ptr + len)\n\n== one function, any backing storage ==\nchecksum(array)   = 108\nchecksum(vec)     = 10\nchecksum(array)   = 27\nchecksum(slice)   = 39\n\n== &str is a slice of UTF-8 bytes ==\ntag  = \"kalloc:\"\naddr = \" 0x8000_5000\"\nboth point into the ONE buffer at 0x1032d9ca0: 0x1032d9ca0 and 0x1032d9ca7\n\n== mutable slices write through ==\npage = [aa, aa, aa, aa, aa, aa, aa, aa, 55, 55, 55, 55, 55, 55, 55, 55]\n\n== length is checked, not trusted ==\nbuf.get(20) = None   <- None, not a wild read\nbuf.get(2..5) = [12, 13, 14]\n\n== chunks: how you walk a page table or a disk block ==\n  entry 0: [aa, aa, aa, aa]\n  entry 1: [aa, aa, aa, aa]\n  entry 2: [55, 55, 55, 55]\n  entry 3: [55, 55, 55, 55]\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0

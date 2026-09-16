@@ -117,9 +117,13 @@ the program is compiled and run for real.
   sections, so the two sides still line up. Per-line links are not drawn for a
   fresh run: they are only as good as the mapping, and the mapping is only
   certain about the captured output. Revert brings them back.
-- **Compare** (<kbd>c</kbd>) flips between the committed page and your edited
-  run without losing the edit. **Revert** puts the original back, code and
-  output both.
+- **Compare** (<kbd>c</kbd>) puts the committed output beside yours, one row
+  per section, with the lines that differ marked. Blank lines are ignored, and
+  it says so when the program prints addresses, which differ on every run
+  anyway. **Revert** puts the original back, code and output both.
+- The keys that are single letters only work when the editor does not have
+  focus, because everything else you type belongs in the editor. <kbd>Esc</kbd>
+  leaves the editor, and the buttons always work.
 - Leaving the program and coming back shows the committed page again, with a
   line offering the unsaved edit. So a deck link never lands on somebody's
   half-finished experiment by surprise.
@@ -180,6 +184,13 @@ node tools/parity-bands.mjs          # 34 programs, 35 runs, 0 disagreements
 Run it after touching either the scanner or the mapping in `pointat.py`. It
 needs the committed captures, but no network and no Rust toolchain.
 
+## Phones and tablets
+
+Below 1000 pixels the two columns do not fit side by side, so each example gets
+a **Code**/**Output** switch, pinned under the top bar, that shows one column at
+a time. Switching keeps the section you were looking at, so the output for the
+code on screen is one tap away. <kbd>o</kbd> does the same from a keyboard.
+
 ## Keys on the page
 
 | Key | Does |
@@ -195,7 +206,8 @@ needs the committed captures, but no network and no Rust toolchain.
 | `+` `-` | text size (remembered) |
 | `i` | edit this program and run it |
 | `⌘`/`Ctrl`+`Enter` | run what you have edited |
-| `c` | compare: the committed page, without losing the edit |
+| `c` | compare your run with the committed one, line by line |
+| `o` | on a narrow screen, switch between the code and the output column |
 
 Deep links work too: `examples.html#04_adapters_and_closures/s3` opens section 3,
 `#12_argv_and_write_all/r2` the second run, and `#e0506/L17` pins line 17.

@@ -49,6 +49,136 @@
     }).join("\n") + "\n";
   }
 
+  /* The committed output for one run, read back out of the rendered rows:
+     [{sec, text}], in order, exactly as the page shows it. */
+  function capturedOutput(grid, run) {
+    var out = [];
+    if (!grid) return out;
+    slice(grid.querySelectorAll(".cell.out")).forEach(function (cell) {
+      var sec = cell.dataset.sec === undefined ? null : parseInt(cell.dataset.sec, 10);
+      var block = cell.querySelector('.run[data-run="' + run + '"]') || cell;
+      slice(block.querySelectorAll(".ol")).forEach(function (row) {
+        var c = row.cloneNode(true);
+        slice(c.querySelectorAll(".badge, .by")).forEach(function (n) { n.remove(); });
+        out.push({ sec: sec, text: c.textContent });
+      });
+    });
+    return out;
+  }
+
+  /* A line diff, longest common subsequence, as pairs:
+     {left, right} with null where a side has nothing. */
+  function diffLines(a, b) {
+    var n = a.length, m = b.length;
+    if (n * m > 600000) {                  // far past anything worth aligning
+      return a.map(function (l) { return { left: l, right: null }; })
+        .concat(b.map(function (r) { return { left: null, right: r }; }));
+    }
+    var lcs = [];
+    for (var i = 0; i <= n; i++) lcs.push(new Uint32Array(m + 1));
+    for (i = n - 1; i >= 0; i--) {
+      for (var j = m - 1; j >= 0; j--) {
+        lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1
+          : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+      }
+    }
+    var pairs = [];
+    i = 0;
+    j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) { pairs.push({ left: a[i], right: b[j], same: true }); i++; j++; }
+      else if (lcs[i + 1][j] >= lcs[i][j + 1]) { pairs.push({ left: a[i], right: null }); i++; }
+      else { pairs.push({ left: null, right: b[j] }); j++; }
+    }
+    while (i < n) pairs.push({ left: a[i++], right: null });
+    while (j < m) pairs.push({ left: null, right: b[j++] });
+    return pairs;
+  }
+
+  function bySection(rows) {
+    // Blank lines are dropped: the captured view trims the blank a "\n== …"
+    // header prints, so keeping them would mark every section as changed.
+    var map = {}, order = [];
+    rows.forEach(function (r) {
+      if (!r.text.trim()) return;
+      var k = r.sec === null || r.sec === undefined ? 0 : r.sec;
+      if (!map[k]) { map[k] = []; order.push(k); }
+      map[k].push(r.text);
+    });
+    return { map: map, order: order };
+  }
+
+  function renderCompare(st) {
+    var box = st.cmp;
+    box.textContent = "";
+    if (!st.last || !st.last.compiled) {
+      box.appendChild(el("div", "fmsg", st.last
+        ? "your edit does not compile, so there is nothing to compare yet"
+        : "run it first (\u2318\u23ce), then compare"));
+      return;
+    }
+    // st.grid is the captured grid, detached while the editor is up.
+    var committed = bySection(capturedOutput(st.grid, st.run));
+    var text = st.last.merged !== undefined ? st.last.merged : st.last.stdout;
+    var lines = (text || "").split("\n");
+    if (lines.length && lines[lines.length - 1] === "") lines.pop();
+    var at = outputBands(st.scan.headers, lines);
+    var freshRows = [], sec = 0;
+    lines.forEach(function (line, i) {
+      if (at[i] !== undefined) sec = at[i];
+      freshRows.push({ sec: sec, text: line });
+    });
+    var fresh = bySection(freshRows);
+
+    var head = el("div", "cmphead");
+    head.appendChild(el("span", "side", "committed \u00b7 " + (CFG.captured_rustc || "the capture")));
+    head.appendChild(el("span", "side", "yours \u00b7 " + (st.last.runner || "")));
+    box.appendChild(head);
+
+    var seen = {}, sections = [];
+    committed.order.concat(fresh.order).forEach(function (k) {
+      if (!seen[k]) { seen[k] = true; sections.push(k); }
+    });
+    sections.sort(function (x, y) { return x - y; });
+    var changed = 0;
+    var grid = el("div", "cmpgrid");
+    sections.forEach(function (k) {
+      var pairs = diffLines(committed.map[k] || [], fresh.map[k] || []);
+      var left = el("div", "cmpcell" + (k ? " sec" : "")), right = el("div", "cmpcell" + (k ? " sec" : ""));
+      if (k) {
+        left.setAttribute("style", style(k));
+        right.setAttribute("style", style(k));
+      }
+      pairs.forEach(function (pr, idx) {
+        if (!pr.same) changed++;
+        var l = el("div", "cmprow" + (pr.left === null ? " none" : pr.same ? "" : " gone"));
+        var r = el("div", "cmprow" + (pr.right === null ? " none" : pr.same ? "" : " new"));
+        if (k && idx === 0) {
+          l.appendChild(el("span", "badge", String(k)));
+          r.appendChild(el("span", "badge", String(k)));
+        }
+        l.appendChild(doc.createTextNode(pr.left === null ? "" : pr.left || "\u00a0"));
+        r.appendChild(doc.createTextNode(pr.right === null ? "" : pr.right || "\u00a0"));
+        left.appendChild(l);
+        right.appendChild(r);
+      });
+      grid.appendChild(left);
+      grid.appendChild(right);
+    });
+    box.appendChild(grid);
+    box.appendChild(el("div", "fmsg", changed
+      ? changed + (changed === 1 ? " line differs" : " lines differ") + " from the committed run"
+      : "every line is the same as the committed run"));
+    if ((st.art.dataset.notes || "").indexOf("nondet") >= 0) {
+      box.appendChild(el("div", "fmsg", "this program prints addresses or capacities, " +
+        "so those lines differ on every run, edit or no edit."));
+    }
+    if (CFG.captured_rustc && st.last.rustc && st.last.rustc !== CFG.captured_rustc) {
+      box.appendChild(el("div", "fmsg", "different compilers: the capture came from " +
+        CFG.captured_rustc + ", your run from " + st.last.rustc + "."));
+    }
+  }
+
   // =========================================================================
   // The editor
   // =========================================================================
@@ -361,7 +491,7 @@
     st.runBtn.title = "run this code (⌘⏎ / Ctrl+Enter)";
     st.cmpBtn = el("button", "cmp", "Compare");
     st.cmpBtn.type = "button";
-    st.cmpBtn.title = "the captured page, without losing the edit (c)";
+    st.cmpBtn.title = "the committed output beside yours (c)";
     st.revBtn = el("button", "rev", "Revert");
     st.revBtn.type = "button";
     st.revBtn.title = "back to the committed example";
@@ -369,7 +499,8 @@
     var who = el("span", "ernr", CFG.runner === "local"
       ? "runs here · " + (CFG.rustc || "local toolchain")
       : "runs on the Rust Playground");
-    bar.appendChild(el("span", "emode", "editing"));
+    st.mode = el("span", "emode", "editing");
+    bar.appendChild(st.mode);
     bar.appendChild(st.runBtn);
     bar.appendChild(st.cmpBtn);
     bar.appendChild(st.revBtn);
@@ -397,6 +528,9 @@
     panes.appendChild(ed);
     panes.appendChild(st.fresh);
     live.appendChild(panes);
+    st.cmp = el("div", "cmpview");
+    live.appendChild(st.cmp);
+    live.dataset.view = "edit";
     st.live = live;
 
     st.ta.addEventListener("keydown", function (e) { onEditorKey(st, e); });
@@ -454,8 +588,12 @@
   }
 
   function toggleCompare(st) {
-    if (st.showing === "live") showCaptured(st);
-    else showLive(st);
+    showLive(st);
+    var to = st.live.dataset.view === "compare" ? "edit" : "compare";
+    st.live.dataset.view = to;
+    st.mode.textContent = to === "compare" ? "comparing" : "editing";
+    st.cmpBtn.setAttribute("aria-pressed", to === "compare" ? "true" : "false");
+    if (to === "compare") renderCompare(st);
   }
 
   function revert(st) {
@@ -477,7 +615,11 @@
     st.fresh.appendChild(head);
     st.fresh.appendChild(el("div", "fmsg", "this takes a second or two"));
     var call = CFG.runner === "local" ? runLocal(st, source) : runPlayground(st, source);
-    call.then(function (res) { renderFresh(st, res); }, function (err) {
+    call.then(function (res) {
+      st.last = res;
+      renderFresh(st, res);
+      if (st.live.dataset.view === "compare") renderCompare(st);
+    }, function (err) {
       renderFresh(st, { error: err && err.message === "timeout"
         ? "no answer within " + (CFG.timeout || 15) + " seconds"
         : "could not reach the runner (" + ((err && err.message) || "network error") + ")" });

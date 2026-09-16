@@ -290,8 +290,62 @@
       toggleDetails();
     } else if (k === "r") {
       cycleRun();
+    } else if (k === "o" && narrow.matches) {
+      setCol(col === "code" ? "out" : "code", cur);
     }
   });
+
+  // ---- narrow screens: the two columns do not fit, so show one at a time ----
+  var narrow = window.matchMedia("(max-width: 1000px)");
+  var col = "code";
+
+  function sectionNearTop(a) {
+    // Which section the reader is looking at, so a switch keeps their place.
+    var top = bar.getBoundingClientRect().bottom;
+    var cells = slice(a.querySelectorAll('.cell[data-sec]:not([style*="display: none"])'));
+    for (var i = 0; i < cells.length; i++) {
+      var r = cells[i].getBoundingClientRect();
+      if (r.bottom > top + 8) return cells[i].dataset.sec;
+    }
+    return null;
+  }
+
+  function setCol(next, a) {
+    var keep = a ? sectionNearTop(a) : null;
+    col = next;
+    arts.forEach(function (x) { x.dataset.col = narrow.matches ? col : ""; });
+    slice(doc.querySelectorAll(".colsw button")).forEach(function (b) {
+      b.setAttribute("aria-selected", b.dataset.col === col ? "true" : "false");
+    });
+    if (a && keep !== null) {
+      var back = a.querySelector('.cell.' + (col === "out" ? "out" : "code") + '[data-sec="' + keep + '"]');
+      if (back) back.scrollIntoView({ block: "start" });
+    }
+  }
+
+  arts.forEach(function (a) {
+    var sw = doc.createElement("div");
+    sw.className = "colsw";
+    sw.setAttribute("role", "tablist");
+    sw.setAttribute("aria-label", "which column to show");
+    [["code", "Code"], ["out", "Output"]].forEach(function (pair) {
+      var b = doc.createElement("button");
+      b.type = "button";
+      b.dataset.col = pair[0];
+      b.textContent = pair[1];
+      b.setAttribute("aria-selected", pair[0] === col ? "true" : "false");
+      b.addEventListener("click", function () { setCol(pair[0], a); b.blur(); });
+      sw.appendChild(b);
+    });
+    // A direct child of the article, not of its header: sticky only holds
+    // while the containing block is on screen, and the header scrolls away.
+    var grid = a.querySelector(".grid");
+    if (grid) a.insertBefore(sw, grid);
+  });
+  if (narrow.addEventListener) {
+    narrow.addEventListener("change", function () { setCol(col, cur); });
+  }
+  setCol(col, null);
 
   // What pointat.edit.js needs: which article is showing, and a way to say
   // that the section cells changed under it.
