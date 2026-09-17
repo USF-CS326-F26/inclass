@@ -218,7 +218,7 @@ code on screen is one tap away. <kbd>o</kbd> does the same from a keyboard.
 | `0`–`9` | that section |
 | click | pin an output line and the code that printed it |
 | click a number | copy a link to that section, or to the whole example from the number beside its title |
-| `Esc` | unpin, then leave section focus |
+| `Esc` | unpin, then leave section focus, and drop it from the link |
 | `n` `p` | next or previous example |
 | `r` | next run (programs with more than one `Run:` line) |
 | `e` | open or close the explanation or the build warnings |

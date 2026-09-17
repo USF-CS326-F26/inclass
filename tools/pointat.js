@@ -80,6 +80,21 @@
     if (doc.activeElement === pick || !a.contains(doc.activeElement)) a.focus({ preventScroll: true });
   }
 
+  // Dismissing a state should dismiss it from the URL too, or a reload brings
+  // it straight back and Esc looks broken. replaceState adds no history entry,
+  // so Back still leaves for wherever the reader came from; it works from
+  // file:// (only pushState does not), and setting the hash is the fallback.
+  function dropFromHash(part) {
+    if (!cur) return;
+    var r = parseHash();
+    if (r[part] === undefined) return;
+    var keep = "#" + cur.id + (r.r ? "/r" + r.r : "") +
+      (part !== "s" && r.s !== undefined ? "/s" + r.s : "") +
+      (part !== "L" && r.L !== undefined ? "/L" + r.L : "");
+    if (location.hash === keep) return;
+    try { history.replaceState(null, "", keep); } catch (e) { location.hash = keep; }
+  }
+
   function go(d) {
     var ids = arts.map(function (x) { return x.id; });
     var i = cur ? ids.indexOf(cur.id) + d : (d > 0 ? 0 : ids.length - 1);
@@ -391,7 +406,8 @@
       }
     } else if (k === "Escape") {
       if (bub) { hideBubble(); return; }
-      if (pinned.length) unpin(); else unfocus();
+      if (pinned.length) { unpin(); dropFromHash("L"); }
+      else { unfocus(); dropFromHash("s"); }
     } else if (k === "n") {
       go(1);
     } else if (k === "p") {

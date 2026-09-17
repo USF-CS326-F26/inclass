@@ -1897,7 +1897,7 @@ follow it. Press <kbd>i</kbd> on a program to edit it and run it. On a phone the
 <tr><td>click</td><td>pin an output line and the code that printed it (click again to unpin)</td></tr>
 <tr><td>click a number</td><td>copy a link to that section, or to the whole example from the number beside its title</td></tr>
 <tr><td><kbd>l</kbd></td><td>copy a link to the pinned line, else the section in focus, else this example</td></tr>
-<tr><td><kbd>Esc</kbd></td><td>unpin, then leave section focus</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>unpin, then leave section focus, and drop it from the link so a reload does not bring it back</td></tr>
 <tr><td><kbd>n</kbd> <kbd>p</kbd></td><td>next or previous example</td></tr>
 <tr><td><kbd>r</kbd></td><td>next run, for programs run more than once</td></tr>
 <tr><td><kbd>e</kbd></td><td>open or close the explanation (broken files) or the build warnings</td></tr>
