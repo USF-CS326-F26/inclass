@@ -130,6 +130,10 @@ the program is compiled and run for real.
   ignored, and it says so when the two runs came from different compilers or
   when the program prints addresses, which differ on every run anyway.
   **Revert** puts the original back, code and output both.
+- **The run tab you are on is the one you edit.** A program with more than
+  one `Run:` line runs with that tab's arguments, and **Compare** reads that
+  tab's captured column. Press <kbd>r</kbd> before <kbd>i</kbd> to edit the
+  other one.
 - The keys that are single letters only work when the editor does not have
   focus, because everything else you type belongs in the editor. <kbd>Esc</kbd>
   leaves the editor, and the buttons always work.
@@ -187,7 +191,7 @@ are. That lives in `tools/pointat.bands.js`, and it must agree with Python's
 real lexer:
 
 ```bash
-node tools/parity-bands.mjs          # 34 programs, 35 runs, 0 disagreements
+node tools/parity-bands.mjs          # 35 programs, 37 runs, 0 disagreements
 ```
 
 Run it after touching either the scanner or the mapping in `pointat.py`. It

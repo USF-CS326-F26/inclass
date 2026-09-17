@@ -15,6 +15,7 @@
 4. [06 · what the bound buys](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#06_generics_and_bounds/s3), then [E0599](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#e0599): "no method named … for type parameter" means a missing bound
 5. [06 · three spellings, one meaning](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#06_generics_and_bounds/s2): `<O: Out>`, `where`, and `impl Out`
 6. [07 · the same three, through one body](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#07_static_vs_dyn/s2), then [versus the generic](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#07_static_vs_dyn/s3): `&mut dyn Out` (`write_banner`) vs. `impl Out` (`write_listing`)
+7. [13 · which one to reach for](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#13_dispatch_at_run_time/s6): whether the call site, the code, or the input names the type -- and [the same tag with no vtable](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#13_dispatch_at_run_time/s3)
 
 ### Friday, Sep 18
 

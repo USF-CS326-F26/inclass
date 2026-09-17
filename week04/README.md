@@ -14,8 +14,8 @@ week04/
 ├── README.md                   this file — session plan and talking points
 ├── examples/
 │   ├── Cargo.toml
-│   ├── src/bin/*.rs            12 runnable programs, one concept each
-│   ├── broken/*.rs             7 programs that must NOT compile, with the fixes
+│   ├── src/bin/*.rs            13 runnable programs, one concept each
+│   ├── broken/*.rs             8 programs that must NOT compile, with the fixes
 │   └── show-errors.sh          compiles each broken file and shows rustc's message
 ├── 06r_collections_example/    the exercise's shape, in a different domain
 ├── 07r_traits_example/         the same, for the second Thursday exercise
@@ -27,14 +27,14 @@ week04/
 
 ```bash
 cd examples
-cargo run --bin 01_array_slice_vec      # ... through 12_argv_and_write_all
+cargo run --bin 01_array_slice_vec      # ... through 13_dispatch_at_run_time
 ```
 
 ```bash
 cd examples && ./show-errors.sh
 ```
 
-`show-errors.sh` walks all seven compile failures, pausing between each; pass a
+`show-errors.sh` walks all eight compile failures, pausing between each; pass a
 substring to jump to one: `./show-errors.sh e0506`. Nothing under `broken/` is
 part of the package, so `cargo build` always succeeds. One program,
 `08_option_vs_result`, builds with a single warning on purpose — the warning is
@@ -65,7 +65,7 @@ the Rust Playground, or on this machine when the page is served with
 and what changed in the output, side by side, and Revert puts the original back. On a
 phone, a Code/Output switch shows one column at a time.
 
-## The twelve programs
+## The thirteen programs
 
 | Program | The one idea | The line to point at |
 |---|---|---|
@@ -81,8 +81,9 @@ phone, a Code/Output switch shows one column at a time.
 | `10_errno_boundary` | the collapse happens in exactly one place | the `match` in `sys_read` |
 | `11_bytes_vs_strings` | a string is bytes plus a checked promise | `str::from_utf8(..)` returns a `Result` |
 | `12_argv_and_write_all` | the slice is re-pointed, not copied | `buf = &buf[n..]` |
+| `13_dispatch_at_run_time` | who names the type: the call site, or the input | `fn open(&mut self, k: Kind) -> &mut dyn Uart` |
 
-## The seven failures
+## The eight failures
 
 | File | Error | Fix shown in the header comment |
 |---|---|---|
@@ -91,6 +92,7 @@ phone, a Code/Output switch shows one column at a time.
 | `e0046_missing_required_method.rs` | overrode the default, skipped the required | supply `put`; delete the override |
 | `e0599_no_bound_no_method.rs` | a trait method on an unbounded type parameter | add `S: Sink` |
 | `e0038_not_dyn_compatible.rs` | a generic method, then `&mut dyn Trait` | `where Self: Sized`, or take a slice, or go generic |
+| `e0107_one_type_per_call_site.rs` | a generic struct used without its type argument | name it, go generic too, `&'a mut dyn Uart`, or a tag |
 | `e0308_option_is_not_result.rs` | returned `find`'s `Option` from `lookup` | `.ok_or(e)`, or the two-arm `match` |
 | `e0277_question_mark_needs_result.rs` | `?` in a function returning `i64` | `match` at the boundary; `?` only below it |
 
@@ -116,6 +118,11 @@ E0502, because indexing a `Vec` is a method call.)
 | 55–61 | 38–40 | bytes, `b"…"`, `from_utf8` **RUN** `11_bytes_vs_strings` |
 | 61–69 | 41–46 | argv, separators, `write_all`, the ceremony, the harness **RUN** `12_argv_and_write_all` |
 | 69–75 | 47–50 | the error table, and on to `06r`, `07r`, `08r`, and `10c` **RUN** `./show-errors.sh` |
+
+`13_dispatch_at_run_time` is not in the 75 minutes. It is the longer answer
+to "when do I actually need `dyn`?" -- one argv-driven choice dispatched
+three ways, with the addresses of the monomorphized copies printed -- for a
+review session, office hours, or the student who asks.
 
 Cut first if you are short on time, in this order: slides 44–46 (the ceremony
 and the harness — `10c`'s README and `10c_echo_example/` carry them), then
@@ -143,6 +150,13 @@ drop slides 10–12 and 44–46.
   what the body may assume and what the caller must prove. *"No method named
   `write_line` found for type parameter `O`"* is not a missing `use`; it is a
   missing bound, and rustc's help text is the fix.
+- **Who names the type decides the mechanism.** If the call site names it, a
+  generic costs nothing at run time and costs code size. If the *input* names
+  it -- an fd redirected long after the kernel was built -- the type has to
+  outlive the decision, and that is what `&mut dyn Out` is for. If the set of
+  backends is closed and small, rv6 keeps a one-byte `FileKind` and matches on
+  it, which is neither. `13_dispatch_at_run_time` does all three from one argv
+  and prints the same bytes in the same places.
 - **Absence is a fact; failure is a decision.** `find` returns `Option`
   because a name not being there is nothing going wrong. `lookup` returns
   `Result` because somebody asked for a file. `.ok_or(e)` is the one line
@@ -171,7 +185,10 @@ inlines across it. The shell uses it at 115200 baud, where that is nothing;
 the scheduler uses generics because `pick_next` runs every tick. The real
 reason to choose `dyn` is not speed but storage: a `&mut dyn Out` fits in a
 struct field or an array; a generic parameter is one type per call site and
-cannot hold two.
+cannot hold two. And storage is not the only way out: when the set of
+backends is closed, rv6 keeps a one-byte tag and matches on it, with no
+vtable at all -- `13_dispatch_at_run_time` runs both and `size_of::<Kind>()
+= 1` against `size_of::<&mut dyn Uart>() = 16` is the whole trade.
 
 **"Why not just return `-1` like C?"** You do, at the very boundary, and rv6
 does today. Behind it, `-1` says nothing and nothing makes the caller look.

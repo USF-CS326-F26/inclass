@@ -1617,6 +1617,20 @@ def out_row(i: int, ol: OutLine, known: dict, badge=None) -> str:
     return f'<div class="{cls}"{attrs}{style}>{b}{linkify(ol.text, known) or "<br>"}</div>'
 
 
+def page_notes(src: Source) -> list:
+    """What a fresh run of this program cannot reproduce, for the page to say
+    so.  The mask for code, the raw text for `{:p}`: a format string's text is
+    blanked in the mask, so `{:p}` is never in it."""
+    notes = []
+    if re.search(r"\benv::args", src.mask):
+        notes.append("argv")       # the Playground runs `cargo run` with no arguments
+    if re.search(r"\btype_name\b", src.mask):
+        notes.append("typename")   # the crate is named `playground` there
+    if re.search(r"\{:p\}", src.text) or re.search(r"as_ptr\(|\.capacity\(", src.mask):
+        notes.append("nondet")     # addresses and capacities differ every run
+    return notes
+
+
 def render_program(p: Program, cap: dict, mapped: list, ctx: Ctx) -> str:
     src = p.src
     cls = char_classes(src)
@@ -1735,13 +1749,7 @@ def render_program(p: Program, cap: dict, mapped: list, ctx: Ctx) -> str:
         rows_html = "".join(diag_rows(d["rendered"], p.path.name, p.stem) for d in diags)
         build = (f'<details class="build" open><summary>cargo build: {what} <kbd>e</kbd></summary>'
                  f'<div class="diag">{rows_html}</div></details>')
-    notes = []
-    if re.search(r"\benv::args", src.mask):
-        notes.append("argv")       # the Playground runs `cargo run` with no arguments
-    if re.search(r"\btype_name\b", src.mask):
-        notes.append("typename")   # the crate is named `playground` there
-    if re.search(r"\{:p\}|as_ptr\(|\.capacity\(", src.mask):
-        notes.append("nondet")     # addresses and capacities differ every run
+    notes = page_notes(src)
     runs_data = [{"cmd": run["cmd"], "args": run["args"]} for run in runs]
     return (f'<article class="ex" id="{esc(p.stem)}" data-kind="program" data-run="1" tabindex="-1"'
             f' data-file="src/bin/{esc(p.stem)}.rs" data-notes="{" ".join(notes)}"'

@@ -462,6 +462,18 @@ class HardeningTest(unittest.TestCase):
         self.assertNotIn("<a", pa.linkify("error[E0277]: can't compare `[u8]` with `str`", known))
         self.assertIn('href="#e0277"', pa.linkify("RUN  ./show-errors.sh e0277", known))
 
+    def test_address_format_earns_the_nondet_note(self):
+        # week03/.../01_structs.rs:44 -- the mask blanks a format string, so
+        # `{:p}` has to be looked for in the raw text
+        src = 'fn main() {\n    println!("== a ==");\n    println!("at {:p}", &1u8);\n}\n'
+        self.assertEqual(pa.page_notes(program(src).src), ["nondet"])
+
+    def test_notes_for_argv_and_type_name_come_from_the_code(self):
+        # week04/.../12_argv_and_write_all.rs:61, 06_generics_and_bounds.rs:55
+        src = ('fn main() {\n    let a: Vec<String> = std::env::args().collect();\n'
+               '    println!("{} {}", a.len(), std::any::type_name::<u8>());\n}\n')
+        self.assertEqual(pa.page_notes(program(src).src), ["argv", "typename"])
+
     def test_publish_normalization(self):
         deck = ('        .back-link a:hover {\n        }\n\n        .reveal a.ex-link {\n            x: y;\n        }\n\n'
                 '        .highlight-box {\n**RUN** `cargo run --bin a` <a class="ex-link" href="examples.html#a" '
