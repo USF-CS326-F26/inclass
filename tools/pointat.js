@@ -177,6 +177,114 @@
     void el.offsetWidth;
     el.classList.add("flash");
   }
+  // ---- links worth sharing ---------------------------------------------------
+  // This page is read from file://, from 127.0.0.1 under `serve`, and from the
+  // course site. A copied link is only useful if it is the one a student can
+  // open, so every link is built from the canonical base the generator wrote
+  // into the config, whatever the address bar says.
+  var CFG = window.POINTAT || {};
+  var SHARE = CFG.share || location.href.split("#")[0];
+  var bub = null, bubTimer = null;
+
+  function hideBubble() {
+    if (bubTimer) { clearTimeout(bubTimer); bubTimer = null; }
+    if (bub && bub.parentNode) bub.parentNode.removeChild(bub);
+    bub = null;
+  }
+
+  // Fixed to the viewport and parented to <body>, for two reasons: a badge sits
+  // in four different offset contexts (and in none at all on a phone), and edit
+  // mode reads a row's text back as source, so nothing new may live in a row.
+  function showBubble(rect, hash, url, ok) {
+    hideBubble();
+    bub = doc.createElement("div");
+    bub.className = "copied" + (ok ? "" : " manual");
+    bub.setAttribute("role", "status");
+    bub.dataset.url = url;
+    bub.title = url;
+    bub.textContent = ok ? "copied " + hash : "copy it: ";
+    if (!ok) {
+      var f = doc.createElement("input");
+      f.type = "text";
+      f.readOnly = true;
+      f.value = url;
+      bub.appendChild(f);
+      setTimeout(function () { f.focus(); f.select(); }, 0);
+    }
+    doc.body.appendChild(bub);
+    var w = bub.getBoundingClientRect().width;
+    bub.style.top = Math.min(window.innerHeight - 40, rect.bottom + 6) + "px";
+    bub.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - w - 8)) + "px";
+    if (ok) bubTimer = setTimeout(hideBubble, 1800);
+  }
+
+  // The site is plain http, where there is no Clipboard API at all, so the
+  // selection-and-execCommand path is the one that runs in the classroom.
+  function legacyCopy(text) {
+    var ta = doc.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:-1000px;left:0;opacity:0";
+    doc.body.appendChild(ta);
+    var ok = false;
+    try {
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      ok = doc.execCommand("copy");
+    } catch (err) { ok = false; }
+    doc.body.removeChild(ta);
+    return ok;
+  }
+
+  function copyLink(rect, id, part) {
+    var hash = "#" + id + (part || ""), url = SHARE + hash;
+    var done = function (ok) { showBubble(rect, hash, url, ok); };
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () { done(true); },
+                                             function () { done(legacyCopy(url)); });
+      return;
+    }
+    done(legacyCopy(url));
+  }
+
+  // Made clickable here rather than in Python: a page without JavaScript has no
+  // clipboard, so it never shows the affordance.
+  function linkable(el, id, part, what) {
+    el.setAttribute("role", "button");
+    el.setAttribute("tabindex", "0");
+    el.setAttribute("aria-label", "copy a link to " + what);
+    el.title = "copy a link to " + what;
+    el.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();   // the row under a badge pins when clicked
+      copyLink(el.getBoundingClientRect(), id, part);
+    });
+    el.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      e.stopPropagation();
+      copyLink(el.getBoundingClientRect(), id, part);
+    });
+  }
+
+  // `l`: the narrowest link the page can name right now.
+  function copyHere() {
+    if (!cur) return;
+    var line = pinned.filter(function (el) {
+      return el.classList.contains("ln") && el.dataset.l;
+    })[0];
+    if (line) {
+      copyLink(line.getBoundingClientRect(), cur.id, "/L" + line.dataset.l);
+      return;
+    }
+    if (at >= 0 && secs[at] !== undefined) {
+      var cell = cur.querySelector('.cell.code.sec[data-sec="' + secs[at] + '"]');
+      copyLink((cell || bar).getBoundingClientRect(), cur.id, "/s" + secs[at]);
+      return;
+    }
+    copyLink(bar.getBoundingClientRect(), cur.id, "");
+  }
+
   function onClick(e) {
     // A link to the hash already showing does not fire hashchange; re-apply it.
     var link = e.target.closest('a[href^="#"]');
@@ -221,6 +329,11 @@
       t.dataset.l = row.dataset.src;
       t.textContent = (below ? "↓" : "↑") + " line " + row.dataset.src + " · " + row.dataset.by +
         (row.dataset.drop ? " · runs when its owner's scope ends" : "");
+      var lk = doc.createElement("span");
+      lk.className = "bylink";
+      lk.textContent = "link";
+      linkable(lk, cur.id, "/L" + row.dataset.src, "line " + row.dataset.src);
+      t.appendChild(lk);
       row.appendChild(t);
     }
   }
@@ -277,6 +390,7 @@
         if (secs.indexOf(k) >= 0) focusSec(secs.indexOf(k));
       }
     } else if (k === "Escape") {
+      if (bub) { hideBubble(); return; }
       if (pinned.length) unpin(); else unfocus();
     } else if (k === "n") {
       go(1);
@@ -286,6 +400,8 @@
       setFs(currentFs() + 2, true);
     } else if (k === "-" || k === "_") {
       setFs(currentFs() - 2, true);
+    } else if (k === "l") {
+      copyHere();
     } else if (k === "e") {
       toggleDetails();
     } else if (k === "r") {
@@ -342,6 +458,23 @@
     var grid = a.querySelector(".grid");
     if (grid) a.insertBefore(sw, grid);
   });
+  // Every section badge, in both columns, and every article's own number.
+  slice(doc.querySelectorAll(".cell.sec .badge")).forEach(function (b) {
+    var cell = b.closest(".cell.sec"), art = b.closest("article.ex");
+    if (cell && art && cell.dataset.sec) {
+      linkable(b, art.id, "/s" + cell.dataset.sec, "section " + cell.dataset.sec);
+    }
+  });
+  slice(doc.querySelectorAll("article.ex > .exh .num")).forEach(function (n) {
+    var art = n.closest("article.ex");
+    if (art) linkable(n, art.id, "", "this example");
+  });
+  // Not on scroll: `l` right after Space would lose its own bubble to the
+  // smooth scroll still running under it.
+  doc.addEventListener("click", function (e) {
+    if (bub && !bub.contains(e.target)) hideBubble();
+  }, true);
+
   if (narrow.addEventListener) {
     narrow.addEventListener("change", function () { setCol(col, cur); });
   }

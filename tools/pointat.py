@@ -1830,7 +1830,7 @@ $css
     <select id="pick" aria-label="choose an example">$options</select>
     <button type="button" class="next" title="next example (n)">&rsaquo;</button>
   </nav>
-  <span class="legend"><kbd>Space</kbd>/<kbd>j</kbd>/<kbd>k</kbd> step sections &middot; click a line to pin &middot; <kbd>n</kbd>/<kbd>p</kbd> example &middot; <kbd>i</kbd> edit and run</span>
+  <span class="legend"><kbd>Space</kbd>/<kbd>j</kbd>/<kbd>k</kbd> sections &middot; click to pin &middot; <kbd>n</kbd>/<kbd>p</kbd> example &middot; <kbd>i</kbd> edit &middot; <kbd>l</kbd> copy link</span>
   <span class="size"><button type="button" data-fs="-2" title="smaller (-)">A&minus;</button><button type="button" data-fs="2" title="larger (+)">A+</button></span>
 </header>
 <main>
@@ -1849,6 +1849,11 @@ INCLASS_BACKLINK = '<a href="README.md">CS 326 &middot; Week {n} in class</a>'
 SITE_BACKLINK = '<a href="./">&larr; In Class</a>'
 SERVE_BACKLINK = '<a href="/">CS 326 &middot; served here</a>'
 PLAYGROUND = "https://play.rust-lang.org/execute"
+# Where students open these pages: the site's mkdocs.yml `site_url` plus its
+# docs/inclass/ directory. A link copied in the page is this, not the file://
+# or 127.0.0.1 URL the instructor happens to be reading it from, because the
+# point of copying one is to paste it somewhere a student will click it.
+SHARE_BASE = "http://cs326-f26.cs.usfca.edu/inclass"
 
 
 def render_index(week: str, topic: str, programs: list, brokens: list, ids: dict, ctx: Ctx,
@@ -1875,7 +1880,8 @@ def render_index(week: str, topic: str, programs: list, brokens: list, ids: dict
 file in <code>examples/broken/</code> beside what <code>rustc</code> said about it. Each coloured,
 numbered section of code sits in the same row as the output it produced. Click an output line to light
 up the <code>println!</code> that printed it, or click a <code>println!</code> to find its output.
-Press <kbd>i</kbd> on a program to edit it and run it. On a phone the two columns do not fit, so a
+Click a section's number to copy a link straight to that section, to paste where students will
+follow it. Press <kbd>i</kbd> on a program to edit it and run it. On a phone the two columns do not fit, so a
 <b>Code</b>/<b>Output</b> switch shows one at a time.</p>
 <h2>The programs</h2>
 <table class="list"><thead><tr><th></th><th>Program</th><th>The one idea</th><th>The line to point at</th><th>Sections</th></tr></thead>
@@ -1889,6 +1895,8 @@ Press <kbd>i</kbd> on a program to edit it and run it. On a phone the two column
 <tr><td><kbd>Shift</kbd>+<kbd>Space</kbd> <kbd>k</kbd> <kbd>&uarr;</kbd> <kbd>&larr;</kbd></td><td>previous section</td></tr>
 <tr><td><kbd>0</kbd>&ndash;<kbd>9</kbd></td><td>jump to that section</td></tr>
 <tr><td>click</td><td>pin an output line and the code that printed it (click again to unpin)</td></tr>
+<tr><td>click a number</td><td>copy a link to that section, or to the whole example from the number beside its title</td></tr>
+<tr><td><kbd>l</kbd></td><td>copy a link to the pinned line, else the section in focus, else this example</td></tr>
 <tr><td><kbd>Esc</kbd></td><td>unpin, then leave section focus</td></tr>
 <tr><td><kbd>n</kbd> <kbd>p</kbd></td><td>next or previous example</td></tr>
 <tr><td><kbd>r</kbd></td><td>next run, for programs run more than once</td></tr>
@@ -1952,6 +1960,7 @@ def render_page(week: str, programs: list, brokens: list, caps: dict, mapped: di
             "tool": "pointat/2", "week": week, "runner": "playground", "endpoint": PLAYGROUND,
             "channel": "stable", "mode": "debug", "edition": crate_edition(week),
             "captured_rustc": caps.get("rustc", ""), "timeout": 15,
+            "share": f"{SHARE_BASE}/{week}-examples.html",
             "palette": [sec_style(k) for k in range(9)],
             **(cfg or {}),
         }, ensure_ascii=False),
@@ -2063,6 +2072,23 @@ def normalize_deck(text: str) -> str:
     return EX_LINK_RE.sub("", text)
 
 
+def share_base_problems(site: Path) -> list:
+    """`SHARE_BASE` is the URL every copied link is built from.  If the site's
+    own `site_url` has moved, those links all point somewhere wrong and nothing
+    else in the toolchain would notice."""
+    cfg = site / "mkdocs.yml"
+    if not cfg.exists():
+        return []
+    m = re.search(r"^site_url:\s*(\S+)", cfg.read_text(encoding="utf-8"), re.M)
+    if not m:
+        return []
+    url = m.group(1).rstrip("/")
+    if SHARE_BASE == url or SHARE_BASE.startswith(url + "/"):
+        return []
+    return [f"--publish: links copied in the page are built from {SHARE_BASE}, but "
+            f"{cfg} says site_url: {url}. Fix SHARE_BASE in pointat.py."]
+
+
 def publish_week(site: Path, week: str, page: str, force_deck: bool = False) -> list:
     """Write the site's copies; return problems.  A published deck that differs
     beyond the back-link and the examples links is left alone, because the
@@ -2137,6 +2163,8 @@ def main(argv=None) -> int:
         weeks = [normalize_week(w) for w in args.weeks]
 
     all_problems, dumps, not_written = [], [], []
+    if args.publish:
+        all_problems += share_base_problems(Path(args.publish).resolve())
     for week in weeks:
         ex = REPO / week / "examples"
         if not (ex / "Cargo.toml").exists():

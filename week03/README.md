@@ -48,7 +48,8 @@ notes/timer, `Esc` for the slide grid, `f` for full screen.
 Open `examples.html` to see every program beside the output it printed, one
 section per row, and every broken file beside what `rustc` said. Click an
 output line to light up the `println!` that printed it; `Space` steps through
-the sections. Every **RUN** line in the slides links straight to its example.
+the sections. Click a section's number to copy a link to that section, which
+is how the per-exercise link lists get written. Every **RUN** line in the slides links straight to its example.
 The page is generated; after changing a program, rebuild it from the repo root
 with `python3 tools/pointat.py week03` (see `tools/README.md`).
 

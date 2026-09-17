@@ -481,6 +481,21 @@ class HardeningTest(unittest.TestCase):
         plain = '        .back-link a:hover {\n        }\n\n        .highlight-box {\n**RUN** `cargo run --bin a`\n'
         self.assertEqual(pa.normalize_deck(deck), plain)
 
+    def test_share_base_is_checked_against_the_site(self):
+        # Every copied link is built from SHARE_BASE, so a site_url that has
+        # moved has to be noticed by something.
+        with tempfile.TemporaryDirectory() as d:
+            site = Path(d)
+            self.assertEqual(pa.share_base_problems(site), [])          # no mkdocs.yml
+            cfg = site / "mkdocs.yml"
+            cfg.write_text("site_name: x\nsite_url: http://cs326-f26.cs.usfca.edu\n", encoding="utf-8")
+            self.assertEqual(pa.share_base_problems(site), [])
+            cfg.write_text("site_url: https://elsewhere.example/\n", encoding="utf-8")
+            probs = pa.share_base_problems(site)
+            self.assertEqual(len(probs), 1)
+            self.assertIn(pa.SHARE_BASE, probs[0])
+            self.assertIn("https://elsewhere.example", probs[0])
+
     def test_a_published_deck_that_differs_is_kept_unless_forced(self):
         # --publish cannot tell a source edit from a fix made on the site side,
         # so it refuses; --force-deck says the source is the one to keep.
@@ -624,6 +639,9 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertIn(self.state.token, page.decode())
         self.assertIn('"runner": "local"', page.decode())
+        # A link copied here is for a student, not for 127.0.0.1.
+        self.assertIn('"share": "http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html"',
+                      page.decode())
 
     def test_no_cors_headers_anywhere(self):
         for method, path in (("GET", "/health"), ("GET", "/week04/examples.html")):

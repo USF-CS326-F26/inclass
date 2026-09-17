@@ -217,6 +217,7 @@ code on screen is one tap away. <kbd>o</kbd> does the same from a keyboard.
 | `Shift`+`Space` `k` `↑` `←` | previous section |
 | `0`–`9` | that section |
 | click | pin an output line and the code that printed it |
+| click a number | copy a link to that section, or to the whole example from the number beside its title |
 | `Esc` | unpin, then leave section focus |
 | `n` `p` | next or previous example |
 | `r` | next run (programs with more than one `Run:` line) |
@@ -225,7 +226,19 @@ code on screen is one tap away. <kbd>o</kbd> does the same from a keyboard.
 | `i` | edit this program and run it |
 | `⌘`/`Ctrl`+`Enter` | run what you have edited |
 | `c` | compare your run with the committed one, line by line |
+| `l` | copy a link to the pinned line, else the section in focus, else this example |
 | `o` | on a narrow screen, switch between the code and the output column |
 
 Deep links work too: `examples.html#04_adapters_and_closures/s3` opens section 3,
 `#12_argv_and_write_all/r2` the second run, and `#e0506/L17` pins line 17.
+
+You do not have to type them. Clicking a section's number copies that link, and
+<kbd>l</kbd> copies the narrowest one the page can name: the pinned line, else the
+section in focus, else the example. What lands on the clipboard is always the
+course-site URL built from `SHARE_BASE` in `tools/pointat.py` — not the `file://`
+or `127.0.0.1` address you happen to be reading, because the point of copying one
+is to paste it where a student will click it. `--publish` checks that constant
+against the site's own `site_url` and complains if they have drifted apart.
+On the site, which is plain http, there is no Clipboard API; the page falls back
+to `execCommand`, and if that is refused too it shows the link selected so you
+can copy it by hand.
