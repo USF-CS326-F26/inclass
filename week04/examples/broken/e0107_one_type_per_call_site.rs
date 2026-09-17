@@ -5,46 +5,41 @@
 // U, so every layer that touches one must name it too -- and once you have
 // written `FdTable<Console>`, the assignment in main is error[E0308].
 //
-// FIX 1: `fn banner<U: Uart>(t: &mut FdTable<U>)` -- go generic too, and hand
+// FIX 1: `fn banner<S: Sink>(t: &mut FdTable<S>)` -- go generic too, and hand
 //        the choice one layer up. Every layer up pays the same tax.
-// FIX 2: `struct FdTable<'a> { out: &'a mut dyn Uart }` -- one field type,
+// FIX 2: `struct FdTable<'a> { out: &'a mut dyn Sink }` -- one field type,
 //        any sink, re-pointed at run time. Program 13 does this.
 // FIX 3: `enum Kind { Tty, File, Null }` and a match -- rv6's `FileKind`.
-trait Uart {
-    fn putc(&mut self, b: u8);
-    fn puts(&mut self, s: &[u8]) {
-        for &b in s {
-            self.putc(b);
-        }
-    }
+trait Sink {
+    fn put(&mut self, bytes: &[u8]);
 }
 
 struct Console;
 
-impl Uart for Console {
-    fn putc(&mut self, b: u8) {
-        print!("{}", b as char);
+impl Sink for Console {
+    fn put(&mut self, bytes: &[u8]) {
+        print!("{}", String::from_utf8_lossy(bytes));
     }
 }
 
-struct Recorder(Vec<u8>);
+struct VecSink(Vec<u8>);
 
-impl Uart for Recorder {
-    fn putc(&mut self, b: u8) {
-        self.0.push(b);
+impl Sink for VecSink {
+    fn put(&mut self, bytes: &[u8]) {
+        self.0.extend_from_slice(bytes);
     }
 }
 
-struct FdTable<U: Uart> {
-    out: U,
+struct FdTable<S: Sink> {
+    out: S,
 }
 
 fn banner(t: &mut FdTable) {
-    t.out.puts(b"rv6 ready\n");
+    t.out.put(b"rv6 ready\n");
 }
 
 fn main() {
     let mut fds = FdTable { out: Console };
     banner(&mut fds);
-    fds.out = Recorder(Vec::new());
+    fds.out = VecSink(Vec::new());
 }

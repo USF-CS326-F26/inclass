@@ -2063,8 +2063,11 @@ def normalize_deck(text: str) -> str:
     return EX_LINK_RE.sub("", text)
 
 
-def publish_week(site: Path, week: str, page: str) -> list:
-    """Write the site's copies; return problems."""
+def publish_week(site: Path, week: str, page: str, force_deck: bool = False) -> list:
+    """Write the site's copies; return problems.  A published deck that differs
+    beyond the back-link and the examples links is left alone, because the
+    difference may be a fix made on the site side; `force_deck` says the
+    source deck is the one to keep."""
     dest = site / "docs" / "inclass"
     if not dest.is_dir():
         return [f"--publish: {dest} is not a directory"]
@@ -2085,13 +2088,16 @@ def publish_week(site: Path, week: str, page: str) -> list:
         if old == new:
             return problems
         if normalize_deck(old) != normalize_deck(new):
-            import difflib
-            diff = difflib.unified_diff(normalize_deck(old).splitlines(), normalize_deck(new).splitlines(),
-                                        str(deck), str(slides), n=0, lineterm="")
-            shown = "\n".join(list(diff)[:40])
-            problems.append(f"--publish: {deck} differs from {slides} beyond the back-link and examples "
-                            f"links; not replacing it. Reconcile these lines first:\n{shown}")
-            return problems
+            if not force_deck:
+                import difflib
+                diff = difflib.unified_diff(normalize_deck(old).splitlines(), normalize_deck(new).splitlines(),
+                                            str(deck), str(slides), n=0, lineterm="")
+                shown = "\n".join(list(diff)[:40])
+                problems.append(f"--publish: {deck} differs from {slides} beyond the back-link and examples "
+                                f"links; not replacing it. Reconcile these lines first, or pass "
+                                f"--force-deck to keep the source:\n{shown}")
+                return problems
+            log(f"{week}: --force-deck: replacing a {deck.name} that differed from the source")
     deck.write_text(new, encoding="utf-8")
     log(f"{week}: wrote {deck}")
     return problems
@@ -2119,6 +2125,8 @@ def main(argv=None) -> int:
     ap.add_argument("--check", action="store_true", help="exit 1 if any check fails")
     ap.add_argument("--dump", action="store_true", help="print the derived model as JSON on stdout")
     ap.add_argument("--publish", metavar="SITE", help="also write the course site's copies under SITE/docs/inclass/")
+    ap.add_argument("--force-deck", action="store_true",
+                    help="with --publish, replace a published deck that differs from the source")
     ap.add_argument("--timeout", type=float, default=10.0, help="seconds per program run (default 10)")
     args = ap.parse_args(argv)
     if args.all == bool(args.weeks):
@@ -2178,7 +2186,7 @@ def main(argv=None) -> int:
         log(f"{week}: wrote {out.relative_to(REPO)} ({len(page) // 1024} KB)")
         if args.publish:
             site_page = render_page(week, programs, brokens, caps, mapped, SITE_BACKLINK)
-            all_problems += publish_week(Path(args.publish).resolve(), week, site_page)
+            all_problems += publish_week(Path(args.publish).resolve(), week, site_page, args.force_deck)
         if args.dump:
             dumps.append(dump_week(week, programs, brokens, mapped))
     if args.dump:

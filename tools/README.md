@@ -108,7 +108,12 @@ mkdocs build --strict && python3 utils/check_links.py
 the site's back-link, and the slides' examples links get the site's file
 names. It will not overwrite a published deck that differs from the source
 in any other way. It prints the differing lines instead, so a fix made on the
-site side is never lost.
+site side is never lost. When those lines are a deck edit you just made,
+`--force-deck` says the source is the one to keep:
+
+```bash
+python3 tools/pointat.py week04 --no-run --publish ../USF-CS326-F26.github.io --force-deck
+```
 
 ## Editing and running in the page
 

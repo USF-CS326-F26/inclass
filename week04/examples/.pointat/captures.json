@@ -1,7 +1,7 @@
 {
  "tool": "pointat/1",
  "week": "week04",
- "captured_at": "2026-09-17T12:53:58-07:00",
+ "captured_at": "2026-09-17T13:19:21-07:00",
  "rustc": "rustc 1.89.0 (29483883e 2025-08-04)",
  "cargo": "cargo 1.89.0 (c24e10642 2025-06-23)",
  "os": "macOS 26.6.2 arm64",
@@ -17,7 +17,7 @@
     {
      "cmd": "cargo run --bin 01_array_slice_vec",
      "args": [],
-     "output": "== three sizes ==\nsize_of::<[Option<u32>; 8]>() = 64   the table: 8 x 8 bytes\nsize_of::<&[Option<u32>]>()    = 16   a slice: pointer + length\nsize_of::<Vec<Option<u32>>>()  = 24   a Vec: pointer + capacity + length\nthe array IS the storage; the other two point at storage\n\n== the array: fixed, and exactly where it was declared ==\narr           = [Some(1), Some(1), Some(1), None, None, None, None, None]\ncount_free(&arr)        = 5\narr.len()               = 8   fixed by the type, known at compile time\n\n== a slice: a view into the same bytes ==\n&arr[..4]     = [Some(1), Some(1), Some(1), None]\ncount_free(first_half)  = 1\nthe slice starts at 0x16bbe5ab0; the array starts at 0x16bbe5ab0 -- same address\nnothing was copied. A slice is where to look and how far.\n\n== a Vec: a copy that lives on the heap and can grow ==\narr.to_vec()  = [Some(1), Some(1), Some(1), None, None, None, None, None]\ncount_free(&v)          = 5\nv.as_ptr()    = 0x104905c90   NOT the array's address: this is the heap\nv.capacity()  = 8   room for 0; the next push must reallocate\nafter 3 pushes: len 11 capacity 16   it asked the allocator\narr.len() is still 8. An array cannot be pushed into.\n\n== indexing is checked, and there is a checked spelling ==\narr.get(2)    = Some(Some(1))\narr.get(8)    = None   one past the end, and no panic\narr[8] would panic: `index out of bounds: the len is 8 but the index is 8`\nthe kernel never indexes with a number a user program chose --\nit checks first, or it uses get()\n\n== the one idea ==\ncount_free(&arr), count_free(&arr[..4]), count_free(&v):\nthe SAME function, because each argument became a &[Option<u32>]\nwrite functions over slices, and every kind of table can call them\n",
+     "output": "== three sizes ==\nsize_of::<[Option<u32>; 8]>() = 64   the table: 8 x 8 bytes\nsize_of::<&[Option<u32>]>()    = 16   a slice: pointer + length\nsize_of::<Vec<Option<u32>>>()  = 24   a Vec: pointer + capacity + length\nthe array IS the storage; the other two point at storage\n\n== the array: fixed, and exactly where it was declared ==\narr           = [Some(1), Some(1), Some(1), None, None, None, None, None]\ncount_free(&arr)        = 5\narr.len()               = 8   fixed by the type, known at compile time\n\n== a slice: a view into the same bytes ==\n&arr[..4]     = [Some(1), Some(1), Some(1), None]\ncount_free(first_half)  = 1\nthe slice starts at 0x16af09ab0; the array starts at 0x16af09ab0 -- same address\nnothing was copied. A slice is where to look and how far.\n\n== a Vec: a copy that lives on the heap and can grow ==\narr.to_vec()  = [Some(1), Some(1), Some(1), None, None, None, None, None]\ncount_free(&v)          = 5\nv.as_ptr()    = 0x1056cdc90   NOT the array's address: this is the heap\nv.capacity()  = 8   room for 0; the next push must reallocate\nafter 3 pushes: len 11 capacity 16   it asked the allocator\narr.len() is still 8. An array cannot be pushed into.\n\n== indexing is checked, and there is a checked spelling ==\narr.get(2)    = Some(Some(1))\narr.get(8)    = None   one past the end, and no panic\narr[8] would panic: `index out of bounds: the len is 8 but the index is 8`\nthe kernel never indexes with a number a user program chose --\nit checks first, or it uses get()\n\n== the one idea ==\ncount_free(&arr), count_free(&arr[..4]), count_free(&v):\nthe SAME function, because each argument became a &[Option<u32>]\nwrite functions over slices, and every kind of table can call them\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -214,7 +214,7 @@
     {
      "cmd": "cargo run --bin 13_dispatch_at_run_time",
      "args": [],
-     "output": "== one body, three addresses ==\nlog_line::<Console>  at 0x1048c0c6c\nlog_line::<Recorder> at 0x1048c0c9c   a second function\nlog_line::<Tally>    at 0x1048c0c3c   and a third\nlog_line_dyn         at 0x1048bfb3c   one copy, for all three\nis Console's copy Recorder's? false\nprogram 06 printed three type names. These are the three functions\nbehind them: naming `log_line::<Console>` is what made the copy.\n(the addresses move every run; that they DIFFER is the point.)\n\n== a tag the source does not know ==\nscript = [\"tty\", \"file\", \"null\"]   <- argv, or this default\n  rv6 ready\n  file  0 bytes, null  0   <- Kind::of(\"tty\") = Tty\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 12 bytes, null 12   <- Kind::of(\"null\") = Null\nONE slot, re-pointed once per step, and `out` never learned which\nsink it held. A step that opened the tty printed a line; the rest\nwent into a Vec and a counter, which is what the counts are.\n\n== the same tag, with no vtable ==\n  rv6 ready\n  file  0 bytes, null  0   <- Kind::of(\"tty\") = Tty\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 12 bytes, null 12   <- Kind::of(\"null\") = Null\nthe same bytes in the same places, through a compare and a jump:\nsize_of::<Kind>() = 1, against size_of::<&mut dyn Uart>() = 16.\nadd `Pipe` to Kind and every match missing that arm stops\ncompiling. Add a fourth `impl Uart` and nothing stops -- or notices.\n\n== why open's return type cannot be a generic ==\n    fn open(&mut self, k: Kind) -> &mut impl Uart   // ONE type, not three\n    error[E0308]: `match` arms have incompatible types\n        Kind::File => &mut self.file,   found to be `&mut Recorder`\n        Kind::Null => &mut self.null,   expected that, found `&mut Tally`\n`impl Uart` is one type the compiler works out and you may not name.\n`dyn Uart` is one type that stands in for all of them, which is why\nit is what a slot filled at run time has to hold.\nRUN  ./show-errors.sh e0107\n\n== C fills the same table in by hand ==\n    struct devsw { int (*read)(..); int (*write)(..); };  // file.h\n    devsw[CONSOLE].write = consolewrite;    // console.c, at boot\n    if (!devsw[major].write) return -1;     // the slot may be empty\nthat is a vtable, written by hand, one per device instead of one per\ntype -- and that `if` guards a slot C cannot prove anybody filled.\n\n== which one to reach for ==\ngeneric  the call site names the type and the call is hot:\n         Scheduler/RoundRobin, because pick_next runs every tick.\ndyn      one slot must hold a type chosen later, or one copy of a\n         big body is worth an indirect call: Out in the shell.\ntag      the set is closed and small, and there is no allocator:\n         FileKind in the fd table, read and write branching on it.\nreach for dyn when the type must outlive the decision, not because\nthe word sounds dynamic. 06 pays code size for speed, 07 shows the\npointer, and this one shows who is doing the choosing.\n",
+     "output": "== one body, three addresses ==\nlog_line::<Console>  at 0x102c74c6c\nlog_line::<Recorder> at 0x102c74c9c   a second function\nlog_line::<Tally>    at 0x102c74c3c   and a third\nlog_line_dyn         at 0x102c73b3c   one copy, for all three\nis Console's copy Recorder's? false\nprogram 06 printed three type names. These are the three functions\nbehind them: naming `log_line::<Console>` is what made the copy.\n(the addresses move every run; that they DIFFER is the point.)\n\n== a tag the source does not know ==\nscript = [\"tty\", \"file\", \"null\"]   <- argv, or this default\n  rv6 ready\n  file  0 bytes, null  0   <- Kind::of(\"tty\") = Tty\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 12 bytes, null 12   <- Kind::of(\"null\") = Null\nONE slot, re-pointed once per step, and `out` never learned which\nsink it held. A step that opened the tty printed a line; the rest\nwent into a Vec and a counter, which is what the counts are.\n\n== the same tag, with no vtable ==\n  rv6 ready\n  file  0 bytes, null  0   <- Kind::of(\"tty\") = Tty\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 12 bytes, null 12   <- Kind::of(\"null\") = Null\nthe same bytes in the same places, through a compare and a jump:\nsize_of::<Kind>() = 1, against size_of::<&mut dyn Uart>() = 16.\nadd `Pipe` to Kind and every match missing that arm stops\ncompiling. Add a fourth `impl Uart` and nothing stops -- or notices.\n\n== why open's return type cannot be a generic ==\n    fn open(&mut self, k: Kind) -> &mut impl Uart   // ONE type, not three\n    error[E0308]: `match` arms have incompatible types\n        Kind::File => &mut self.file,   found to be `&mut Recorder`\n        Kind::Null => &mut self.null,   expected that, found `&mut Tally`\n`impl Uart` is one type the compiler works out and you may not name.\n`dyn Uart` is one type that stands in for all of them, which is why\nit is what a slot filled at run time has to hold.\nRUN  ./show-errors.sh e0107\n\n== C fills the same table in by hand ==\n    struct devsw { int (*read)(..); int (*write)(..); };  // file.h\n    devsw[CONSOLE].write = consolewrite;    // console.c, at boot\n    if (!devsw[major].write) return -1;     // the slot may be empty\nthat is a vtable, written by hand, one per device instead of one per\ntype -- and that `if` guards a slot C cannot prove anybody filled.\n\n== which one to reach for ==\ngeneric  the call site names the type and the call is hot:\n         Scheduler/RoundRobin, because pick_next runs every tick.\ndyn      one slot must hold a type chosen later, or one copy of a\n         big body is worth an indirect call: Out in the shell.\ntag      the set is closed and small, and there is no allocator:\n         FileKind in the fd table, read and write branching on it.\nreach for dyn when the type must outlive the decision, not because\nthe word sounds dynamic. 06 pays code size for speed, 07 shows the\npointer, and this one shows who is doing the choosing.\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -226,7 +226,7 @@
       "file",
       "null"
      ],
-     "output": "== one body, three addresses ==\nlog_line::<Console>  at 0x1025d0c6c\nlog_line::<Recorder> at 0x1025d0c9c   a second function\nlog_line::<Tally>    at 0x1025d0c3c   and a third\nlog_line_dyn         at 0x1025cfb3c   one copy, for all three\nis Console's copy Recorder's? false\nprogram 06 printed three type names. These are the three functions\nbehind them: naming `log_line::<Console>` is what made the copy.\n(the addresses move every run; that they DIFFER is the point.)\n\n== a tag the source does not know ==\nscript = [\"file\", \"file\", \"null\"]   <- argv, or this default\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null 12   <- Kind::of(\"null\") = Null\nONE slot, re-pointed once per step, and `out` never learned which\nsink it held. A step that opened the tty printed a line; the rest\nwent into a Vec and a counter, which is what the counts are.\n\n== the same tag, with no vtable ==\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null 12   <- Kind::of(\"null\") = Null\nthe same bytes in the same places, through a compare and a jump:\nsize_of::<Kind>() = 1, against size_of::<&mut dyn Uart>() = 16.\nadd `Pipe` to Kind and every match missing that arm stops\ncompiling. Add a fourth `impl Uart` and nothing stops -- or notices.\n\n== why open's return type cannot be a generic ==\n    fn open(&mut self, k: Kind) -> &mut impl Uart   // ONE type, not three\n    error[E0308]: `match` arms have incompatible types\n        Kind::File => &mut self.file,   found to be `&mut Recorder`\n        Kind::Null => &mut self.null,   expected that, found `&mut Tally`\n`impl Uart` is one type the compiler works out and you may not name.\n`dyn Uart` is one type that stands in for all of them, which is why\nit is what a slot filled at run time has to hold.\nRUN  ./show-errors.sh e0107\n\n== C fills the same table in by hand ==\n    struct devsw { int (*read)(..); int (*write)(..); };  // file.h\n    devsw[CONSOLE].write = consolewrite;    // console.c, at boot\n    if (!devsw[major].write) return -1;     // the slot may be empty\nthat is a vtable, written by hand, one per device instead of one per\ntype -- and that `if` guards a slot C cannot prove anybody filled.\n\n== which one to reach for ==\ngeneric  the call site names the type and the call is hot:\n         Scheduler/RoundRobin, because pick_next runs every tick.\ndyn      one slot must hold a type chosen later, or one copy of a\n         big body is worth an indirect call: Out in the shell.\ntag      the set is closed and small, and there is no allocator:\n         FileKind in the fd table, read and write branching on it.\nreach for dyn when the type must outlive the decision, not because\nthe word sounds dynamic. 06 pays code size for speed, 07 shows the\npointer, and this one shows who is doing the choosing.\n",
+     "output": "== one body, three addresses ==\nlog_line::<Console>  at 0x102808c6c\nlog_line::<Recorder> at 0x102808c9c   a second function\nlog_line::<Tally>    at 0x102808c3c   and a third\nlog_line_dyn         at 0x102807b3c   one copy, for all three\nis Console's copy Recorder's? false\nprogram 06 printed three type names. These are the three functions\nbehind them: naming `log_line::<Console>` is what made the copy.\n(the addresses move every run; that they DIFFER is the point.)\n\n== a tag the source does not know ==\nscript = [\"file\", \"file\", \"null\"]   <- argv, or this default\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null 12   <- Kind::of(\"null\") = Null\nONE slot, re-pointed once per step, and `out` never learned which\nsink it held. A step that opened the tty printed a line; the rest\nwent into a Vec and a counter, which is what the counts are.\n\n== the same tag, with no vtable ==\n  file 12 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null  0   <- Kind::of(\"file\") = File\n  file 24 bytes, null 12   <- Kind::of(\"null\") = Null\nthe same bytes in the same places, through a compare and a jump:\nsize_of::<Kind>() = 1, against size_of::<&mut dyn Uart>() = 16.\nadd `Pipe` to Kind and every match missing that arm stops\ncompiling. Add a fourth `impl Uart` and nothing stops -- or notices.\n\n== why open's return type cannot be a generic ==\n    fn open(&mut self, k: Kind) -> &mut impl Uart   // ONE type, not three\n    error[E0308]: `match` arms have incompatible types\n        Kind::File => &mut self.file,   found to be `&mut Recorder`\n        Kind::Null => &mut self.null,   expected that, found `&mut Tally`\n`impl Uart` is one type the compiler works out and you may not name.\n`dyn Uart` is one type that stands in for all of them, which is why\nit is what a slot filled at run time has to hold.\nRUN  ./show-errors.sh e0107\n\n== C fills the same table in by hand ==\n    struct devsw { int (*read)(..); int (*write)(..); };  // file.h\n    devsw[CONSOLE].write = consolewrite;    // console.c, at boot\n    if (!devsw[major].write) return -1;     // the slot may be empty\nthat is a vtable, written by hand, one per device instead of one per\ntype -- and that `if` guards a slot C cannot prove anybody filled.\n\n== which one to reach for ==\ngeneric  the call site names the type and the call is hot:\n         Scheduler/RoundRobin, because pick_next runs every tick.\ndyn      one slot must hold a type chosen later, or one copy of a\n         big body is worth an indirect call: Out in the shell.\ntag      the set is closed and small, and there is no allocator:\n         FileKind in the fd table, read and write branching on it.\nreach for dyn when the type must outlive the decision, not because\nthe word sounds dynamic. 06 pays code size for speed, 07 shows the\npointer, and this one shows who is doing the choosing.\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -371,33 +371,33 @@
   },
   "e0107_one_type_per_call_site": {
    "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0107_one_type_per_call_site.rs",
-   "rendered": "error[E0107]: missing generics for struct `FdTable`\n  --> e0107_one_type_per_call_site.rs:42:19\n   |\n42 | fn banner(t: &mut FdTable) {\n   |                   ^^^^^^^ expected 1 generic argument\n   |\nnote: struct defined here, with 1 generic parameter: `U`\n  --> e0107_one_type_per_call_site.rs:38:8\n   |\n38 | struct FdTable<U: Uart> {\n   |        ^^^^^^^ -\nhelp: add missing generic argument\n   |\n42 | fn banner(t: &mut FdTable<U>) {\n   |                          +++\n\nerror[E0308]: mismatched types\n  --> e0107_one_type_per_call_site.rs:49:15\n   |\n49 |     fds.out = Recorder(Vec::new());\n   |     -------   ^^^^^^^^^^^^^^^^^^^^ expected `Console`, found `Recorder`\n   |     |\n   |     expected due to the type of this binding\n\nerror: aborting due to 2 previous errors\n\nSome errors have detailed explanations: E0107, E0308.\nFor more information about an error, try `rustc --explain E0107`.\n",
+   "rendered": "error[E0107]: missing generics for struct `FdTable`\n  --> e0107_one_type_per_call_site.rs:37:19\n   |\n37 | fn banner(t: &mut FdTable) {\n   |                   ^^^^^^^ expected 1 generic argument\n   |\nnote: struct defined here, with 1 generic parameter: `S`\n  --> e0107_one_type_per_call_site.rs:33:8\n   |\n33 | struct FdTable<S: Sink> {\n   |        ^^^^^^^ -\nhelp: add missing generic argument\n   |\n37 | fn banner(t: &mut FdTable<S>) {\n   |                          +++\n\nerror[E0308]: mismatched types\n  --> e0107_one_type_per_call_site.rs:44:15\n   |\n44 |     fds.out = VecSink(Vec::new());\n   |     -------   ^^^^^^^^^^^^^^^^^^^ expected `Console`, found `VecSink`\n   |     |\n   |     expected due to the type of this binding\n\nerror: aborting due to 2 previous errors\n\nSome errors have detailed explanations: E0107, E0308.\nFor more information about an error, try `rustc --explain E0107`.\n",
    "diagnostics": [
     {
      "level": "error",
      "code": "E0107",
      "message": "missing generics for struct `FdTable`",
-     "rendered": "error[E0107]: missing generics for struct `FdTable`\n  --> e0107_one_type_per_call_site.rs:42:19\n   |\n42 | fn banner(t: &mut FdTable) {\n   |                   ^^^^^^^ expected 1 generic argument\n   |\nnote: struct defined here, with 1 generic parameter: `U`\n  --> e0107_one_type_per_call_site.rs:38:8\n   |\n38 | struct FdTable<U: Uart> {\n   |        ^^^^^^^ -\nhelp: add missing generic argument\n   |\n42 | fn banner(t: &mut FdTable<U>) {\n   |                          +++\n\n",
+     "rendered": "error[E0107]: missing generics for struct `FdTable`\n  --> e0107_one_type_per_call_site.rs:37:19\n   |\n37 | fn banner(t: &mut FdTable) {\n   |                   ^^^^^^^ expected 1 generic argument\n   |\nnote: struct defined here, with 1 generic parameter: `S`\n  --> e0107_one_type_per_call_site.rs:33:8\n   |\n33 | struct FdTable<S: Sink> {\n   |        ^^^^^^^ -\nhelp: add missing generic argument\n   |\n37 | fn banner(t: &mut FdTable<S>) {\n   |                          +++\n\n",
      "spans": [
       {
-       "ls": 42,
-       "le": 42,
+       "ls": 37,
+       "le": 37,
        "cs": 19,
        "ce": 26,
        "primary": true,
        "label": "expected 1 generic argument"
       },
       {
-       "ls": 38,
-       "le": 38,
+       "ls": 33,
+       "le": 33,
        "cs": 16,
        "ce": 17,
        "primary": false,
        "label": ""
       },
       {
-       "ls": 38,
-       "le": 38,
+       "ls": 33,
+       "le": 33,
        "cs": 8,
        "ce": 15,
        "primary": false,
@@ -409,19 +409,19 @@
      "level": "error",
      "code": "E0308",
      "message": "mismatched types",
-     "rendered": "error[E0308]: mismatched types\n  --> e0107_one_type_per_call_site.rs:49:15\n   |\n49 |     fds.out = Recorder(Vec::new());\n   |     -------   ^^^^^^^^^^^^^^^^^^^^ expected `Console`, found `Recorder`\n   |     |\n   |     expected due to the type of this binding\n\n",
+     "rendered": "error[E0308]: mismatched types\n  --> e0107_one_type_per_call_site.rs:44:15\n   |\n44 |     fds.out = VecSink(Vec::new());\n   |     -------   ^^^^^^^^^^^^^^^^^^^ expected `Console`, found `VecSink`\n   |     |\n   |     expected due to the type of this binding\n\n",
      "spans": [
       {
-       "ls": 49,
-       "le": 49,
+       "ls": 44,
+       "le": 44,
        "cs": 15,
-       "ce": 35,
+       "ce": 34,
        "primary": true,
-       "label": "expected `Console`, found `Recorder`"
+       "label": "expected `Console`, found `VecSink`"
       },
       {
-       "ls": 49,
-       "le": 49,
+       "ls": 44,
+       "le": 44,
        "cs": 5,
        "ce": 12,
        "primary": false,
@@ -453,7 +453,7 @@
    ],
    "exit": 1,
    "timed_out": false,
-   "source_sha1": "f5bb6bcd7fadb62410461293e48e80f49d52c8fd"
+   "source_sha1": "ff697459374a6b38c8b9222550142e2c99f88ce5"
   },
   "e0277_question_mark_needs_result": {
    "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0277_question_mark_needs_result.rs",

@@ -92,7 +92,7 @@ phone, a Code/Output switch shows one column at a time.
 | `e0046_missing_required_method.rs` | overrode the default, skipped the required | supply `put`; delete the override |
 | `e0599_no_bound_no_method.rs` | a trait method on an unbounded type parameter | add `S: Sink` |
 | `e0038_not_dyn_compatible.rs` | a generic method, then `&mut dyn Trait` | `where Self: Sized`, or take a slice, or go generic |
-| `e0107_one_type_per_call_site.rs` | a generic struct used without its type argument | name it, go generic too, `&'a mut dyn Uart`, or a tag |
+| `e0107_one_type_per_call_site.rs` | a generic struct used without its type argument | name it, go generic too, `&'a mut dyn Sink`, or a tag |
 | `e0308_option_is_not_result.rs` | returned `find`'s `Option` from `lookup` | `.ok_or(e)`, or the two-arm `match` |
 | `e0277_question_mark_needs_result.rs` | `?` in a function returning `i64` | `match` at the boundary; `?` only below it |
 

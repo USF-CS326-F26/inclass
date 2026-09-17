@@ -481,6 +481,29 @@ class HardeningTest(unittest.TestCase):
         plain = '        .back-link a:hover {\n        }\n\n        .highlight-box {\n**RUN** `cargo run --bin a`\n'
         self.assertEqual(pa.normalize_deck(deck), plain)
 
+    def test_a_published_deck_that_differs_is_kept_unless_forced(self):
+        # --publish cannot tell a source edit from a fix made on the site side,
+        # so it refuses; --force-deck says the source is the one to keep.
+        quiet, pa.log = pa.log, lambda msg: None
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                site = Path(d)
+                (site / "docs" / "inclass").mkdir(parents=True)
+                deck = site / "docs" / "inclass" / "week04-slides.html"
+                deck.write_text("a deck somebody fixed on the site\n", encoding="utf-8")
+                problems = pa.publish_week(site, "week04", "<html>page</html>")
+                self.assertEqual(len(problems), 1)
+                self.assertIn("--force-deck", problems[0])
+                self.assertEqual(deck.read_text(), "a deck somebody fixed on the site\n")
+                self.assertIn("page", (site / "docs" / "inclass" / "week04-examples.html").read_text())
+                self.assertEqual(pa.publish_week(site, "week04", "<html>page</html>", True), [])
+                now = deck.read_text()
+                self.assertIn("Choosing Between Them", now)
+                self.assertIn('href="week04-examples.html#', now)
+                self.assertEqual(pa.publish_week(site, "week04", "<html>page</html>"), [])
+        finally:
+            pa.log = quiet
+
 
 # ---------------------------------------------------------------------------
 # The local runner behind `pointat serve`
