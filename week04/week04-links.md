@@ -16,6 +16,7 @@
 5. [06 · three spellings, one meaning](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#06_generics_and_bounds/s2): `<O: Out>`, `where`, and `impl Out`
 6. [07 · the same three, through one body](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#07_static_vs_dyn/s2), then [versus the generic](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#07_static_vs_dyn/s3): `&mut dyn Out` (`write_banner`) vs. `impl Out` (`write_listing`)
 7. [13 · which one to reach for](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#13_dispatch_at_run_time/s6): whether the call site, the code, or the input names the type -- and [the same tag with no vtable](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#13_dispatch_at_run_time/s3)
+8. [14 · where the bound goes](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#14_generic_struct_and_guard/s3): `impl<T>` for every T, `impl<T: Uart>` for the sinks -- the generic on a *struct*, which is [`SpinLock<T>` in 37k](http://cs326-f26.cs.usfca.edu/inclass/week04-examples.html#14_generic_struct_and_guard/s5)
 
 ### Friday, Sep 18
 

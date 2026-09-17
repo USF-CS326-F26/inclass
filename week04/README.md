@@ -14,8 +14,8 @@ week04/
 ├── README.md                   this file — session plan and talking points
 ├── examples/
 │   ├── Cargo.toml
-│   ├── src/bin/*.rs            13 runnable programs, one concept each
-│   ├── broken/*.rs             8 programs that must NOT compile, with the fixes
+│   ├── src/bin/*.rs            14 runnable programs, one concept each
+│   ├── broken/*.rs             9 programs that must NOT compile, with the fixes
 │   └── show-errors.sh          compiles each broken file and shows rustc's message
 ├── 06r_collections_example/    the exercise's shape, in a different domain
 ├── 07r_traits_example/         the same, for the second Thursday exercise
@@ -27,14 +27,14 @@ week04/
 
 ```bash
 cd examples
-cargo run --bin 01_array_slice_vec      # ... through 13_dispatch_at_run_time
+cargo run --bin 01_array_slice_vec      # ... through 14_generic_struct_and_guard
 ```
 
 ```bash
 cd examples && ./show-errors.sh
 ```
 
-`show-errors.sh` walks all eight compile failures, pausing between each; pass a
+`show-errors.sh` walks all nine compile failures, pausing between each; pass a
 substring to jump to one: `./show-errors.sh e0506`. Nothing under `broken/` is
 part of the package, so `cargo build` always succeeds. One program,
 `08_option_vs_result`, builds with a single warning on purpose — the warning is
@@ -65,7 +65,7 @@ the Rust Playground, or on this machine when the page is served with
 and what changed in the output, side by side, and Revert puts the original back. On a
 phone, a Code/Output switch shows one column at a time.
 
-## The thirteen programs
+## The fourteen programs
 
 | Program | The one idea | The line to point at |
 |---|---|---|
@@ -82,8 +82,9 @@ phone, a Code/Output switch shows one column at a time.
 | `11_bytes_vs_strings` | a string is bytes plus a checked promise | `str::from_utf8(..)` returns a `Result` |
 | `12_argv_and_write_all` | the slice is re-pointed, not copied | `buf = &buf[n..]` |
 | `13_dispatch_at_run_time` | who names the type: the call site, or the input | `fn open(&mut self, k: Kind) -> &mut dyn Uart` |
+| `14_generic_struct_and_guard` | one definition, a type for every T | `impl<T> Lock<T>` beside `impl<T: Uart> Lock<T>` |
 
-## The eight failures
+## The nine failures
 
 | File | Error | Fix shown in the header comment |
 |---|---|---|
@@ -93,6 +94,7 @@ phone, a Code/Output switch shows one column at a time.
 | `e0599_no_bound_no_method.rs` | a trait method on an unbounded type parameter | add `S: Sink` |
 | `e0038_not_dyn_compatible.rs` | a generic method, then `&mut dyn Trait` | `where Self: Sized`, or take a slice, or go generic |
 | `e0107_one_type_per_call_site.rs` | a generic struct used without its type argument | name it, go generic too, `&'a mut dyn Sink`, or a tag |
+| `e0392_type_parameter_never_used.rs` | a generic struct that never holds its T | hold one in a field, `PhantomData<T>`, or drop the parameter |
 | `e0308_option_is_not_result.rs` | returned `find`'s `Option` from `lookup` | `.ok_or(e)`, or the two-arm `match` |
 | `e0277_question_mark_needs_result.rs` | `?` in a function returning `i64` | `match` at the boundary; `?` only below it |
 
@@ -123,6 +125,9 @@ E0502, because indexing a `Vec` is a method call.)
 to "when do I actually need `dyn`?" -- one argv-driven choice dispatched
 three ways, with the addresses of the monomorphized copies printed -- for a
 review session, office hours, or the student who asks.
+`14_generic_struct_and_guard` is extra in the same way: the generic
+*struct* that L06 never shows, and the `SpinLock<T>` with a guard that
+`37k_spinlocks` hands over on October 29 for you to fill in.
 
 Cut first if you are short on time, in this order: slides 44–46 (the ceremony
 and the harness — `10c`'s README and `10c_echo_example/` carry them), then
@@ -226,5 +231,6 @@ the lowest-free search over a fixed table and the one `match` that turns a
 `Result` into `-errno` are `sys_open` and `sys_close` in `50k`; the
 `Scheduler` trait with `RoundRobin` behind it is the kernel scheduler in `36k`;
 the `dyn Out` seam is the shell in `46k`; `FsError` grows to eight variants in
-`40k` and the compiler finds every `match` that needs a decision; and
-`putc`-shaped byte output is the UART driver in `45k`.
+`40k` and the compiler finds every `match` that needs a decision; `putc`-shaped byte output is the UART driver in `45k`; and the generic
+struct with a guard is `SpinLock<T>` in `37k`, where `lock` and `try_lock`
+are yours to write.
