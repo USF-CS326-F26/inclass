@@ -1,0 +1,11 @@
+[package]
+name = "wc_vec"
+version = "0.1.0"
+edition = "2021"
+
+# The obvious wc -- read everything, split it, count the pieces -- in plain
+# std. The exercise (12c_wc) is the streaming version this one cannot be.
+#   cargo test                     # the exercise's five cases, plus two more
+#   cargo run -- src/main.rs       # run it as the command
+#   printf 'a b\nc\n' | cargo run  # ...or on stdin
+[dependencies]
