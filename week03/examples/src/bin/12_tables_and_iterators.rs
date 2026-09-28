@@ -107,14 +107,12 @@ fn main() {
     println!("until the kernel has a heap.");
 
     println!("\n== a chain that reads as English ==");
-    let mut next = 3;
-    for _ in 0..3 {
-        let from = next;
-        let pick = round_robin(&table, &mut next);
-        println!("  start at {from} -> picked {:?}, resume at {next}", pick);
+    for limit in [100, 1000, 10_000] {
+        println!("  first live device with more than {limit:>5} reads -> {:?}",
+                 first_busy(&table, limit));
     }
-    println!("consider N offsets, wrap each into a table index starting where");
-    println!("we left off, take the first live one, remember to resume after it");
+    println!("skip the empty slots, pair each device with its read count,");
+    println!("stop at the first busy one, and hand back its name");
 
     println!("\n== the hard limit, and what happens at it ==");
     let mut live = device_table();
@@ -160,16 +158,14 @@ fn device_table() -> [DevEntry; NDEV] {
     t
 }
 
-/// A policy that never learns how big the table is: it reads `table.len()`.
-fn round_robin(table: &[DevEntry], next: &mut usize) -> Option<&'static str> {
-    let n = table.len();
-    (0..n)
-        .map(|off| (*next + off) % n)
-        .find(|&i| table[i].major != 0)
-        .map(|i| {
-            *next = (i + 1) % n;
-            table[i].name
-        })
+/// Never learns how big the table is: the iterator stops at `table.len()`.
+fn first_busy(table: &[DevEntry], limit: usize) -> Option<&'static str> {
+    table
+        .iter()
+        .filter(|e| e.major != 0)
+        .map(|e| (e.name, e.reads))
+        .find(|&(_, reads)| reads > limit)
+        .map(|(name, _)| name)
 }
 
 /// Claim a slot, or report honestly that there is none.
