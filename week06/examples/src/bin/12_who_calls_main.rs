@@ -39,7 +39,7 @@ fn main() {
 
     println!("== where this program lives ==");
     let start = __week06_start as *const () as usize;
-    println!("_entry          {:#x}   the first instruction QEMU ran", _entry as *const () as usize);
+    println!("_entry          {:#x}   where the boot ROM's jump landed", _entry as *const () as usize);
     println!("__week06_start  {start:#x}");
     println!("main            {:#x}", main as fn() as usize);
     println!("etext           {:p}   end of code", addr_of!(etext));

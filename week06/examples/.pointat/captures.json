@@ -1,7 +1,7 @@
 {
  "tool": "pointat/1",
  "week": "week06",
- "captured_at": "2026-09-29T05:36:52-07:00",
+ "captured_at": "2026-09-29T06:56:31-07:00",
  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
  "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
  "os": "macOS 26.6.2 arm64",
@@ -87,7 +87,7 @@
     {
      "cmd": "cargo run --bin 06_prologue_and_s0",
      "args": [],
-     "output": "== the frame framed built ==\nmain's sp = 0x80006790\nframe at 0x80006780\n  [sp + 0] saved s0 = 0x80000d6c\n  [sp + 8] saved ra = 0x800000b4   = main + 0x52\n\n== what the saves bought ==\nframed(4, visit) = 44 = visit's 40 + the 4 kept in s0\nvisit ran Rust code with its own frames, and s0 still held 4\n\n== a callee that skips the save ==\nkeeper(polite) -> s1 = 0x5151\nkeeper(rude)   -> s1 = 0x63\nrude returns fine on its own. Only a caller keeping something in s1 notices,\nand it notices later, somewhere else\n",
+     "output": "== the frame framed built ==\nmain's sp = 0x80006790\nframe at 0x80006780\n  [sp + 0] saved s0 = 0x80000d72\n  [sp + 8] saved ra = 0x800000b4   = main + 0x52\n\n== what the saves bought ==\nframed(4, visit) = 44 = visit's 40 + the 4 kept in s0\nvisit ran Rust code with its own frames, and s0 still held 4\n\n== a callee that skips the save ==\nkeeper(polite) -> s1 = 0x5151\nkeeper(rude)   -> s1 = 0x63\nrude returns fine on its own. Only a caller keeping something in s1 notices,\nand it notices later, somewhere else\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -115,7 +115,7 @@
     {
      "cmd": "cargo run --bin 08_mmio_clock",
      "args": [],
-     "output": "== the counter moves on its own ==\nmtime = 3190\nmtime = 3260   (+70 between two loads)\n\n== .add counts elements, not bytes ==\nMTIMECMP.add(0) = 0x2004000\nMTIMECMP.add(1) = 0x2004008\nMTIMECMP.add(2) = 0x2004010\nMTIMECMP.add(3) = 0x2004018\neach step is size_of::<u64>() = 8 bytes; nothing was dereferenced\n\n== wait_until: poll the counter ==\nasked for 100000 ticks (10 ms), waited 100030\n\n== a second device: the wall clock ==\nRTC = 1790685413011901000 ns since 1970\n    = 2026-09-29 12:36:53 UTC\nlow word first: reading TIME_LOW latches TIME_HIGH, so the two halves match\n",
+     "output": "== the counter moves on its own ==\nmtime = 2860\nmtime = 2930   (+70 between two loads)\n\n== .add counts elements, not bytes ==\nMTIMECMP.add(0) = 0x2004000\nMTIMECMP.add(1) = 0x2004008\nMTIMECMP.add(2) = 0x2004010\nMTIMECMP.add(3) = 0x2004018\neach step is size_of::<u64>() = 8 bytes; nothing was dereferenced\n\n== wait_until: poll the counter ==\nasked for 100000 ticks (10 ms), waited 100040\n\n== a second device: the wall clock ==\nRTC = 1790690192012003000 ns since 1970\n    = 2026-09-29 13:56:32 UTC\nlow word first: reading TIME_LOW latches TIME_HIGH, so the two halves match\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -129,7 +129,7 @@
     {
      "cmd": "cargo run --bin 09_volatile_matters",
      "args": [],
-     "output": "== two plain stores to the UART ==\nthe UART received: B\nthe first store was dead to the optimizer: the second overwrites it\n\n== two volatile stores ==\nthe UART received: AB\nboth bytes, in order: each volatile store happens, exactly as written\n\n== 100,000 plain loads of mtime ==\ndistinct values seen: 1\nthe load was hoisted out of the loop: the clock was read once\n\n== 100,000 volatile loads ==\ndistinct values seen: 12118\nevery trip around the loop asked the device again\n",
+     "output": "== two plain stores to the UART ==\nthe UART received: B\nthe first store was dead to the optimizer: the second overwrites it\n\n== two volatile stores ==\nthe UART received: AB\nboth bytes, in order: each volatile store happens, exactly as written\n\n== 100,000 plain loads of mtime ==\ndistinct values seen: 1\nthe load was hoisted out of the loop: the clock was read once\n\n== 100,000 volatile loads ==\ndistinct values seen: 13032\nevery trip around the loop asked the device again\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0
@@ -182,13 +182,13 @@
    ]
   },
   "12_who_calls_main": {
-   "source_sha1": "06b3b2e5ed8657a36312634e92fbd66ae29df82e",
+   "source_sha1": "9dd86adc2d979d1267b34f12e1508e34a4025592",
    "diagnostics": [],
    "runs": [
     {
      "cmd": "cargo run --bin 12_who_calls_main",
      "args": [],
-     "output": "== where this program lives ==\n_entry          0x80000000   the first instruction QEMU ran\n__week06_start  0x800001c4\nmain            0x8000001e\netext           0x80001000   end of code\nend             0x800016a0   end of data\n__stack_top     0x800056a0   16 KiB above end\n\n== who called main ==\nmain's ra = 0x800001d0 = __week06_start + 0xc\nno generated main, no C runtime: a function in this program called it\n\n== after main returns ==\n__week06_start calls week06::exit(0), and the test finisher ends QEMU\nwithout it there is nothing to return to: the CPU would run into whatever is next\n",
+     "output": "== where this program lives ==\n_entry          0x80000000   where the boot ROM's jump landed\n__week06_start  0x800001c4\nmain            0x8000001e\netext           0x80001000   end of code\nend             0x800016a0   end of data\n__stack_top     0x800056a0   16 KiB above end\n\n== who called main ==\nmain's ra = 0x800001d6 = __week06_start + 0x12\nno generated main, no C runtime: a function in this program called it\n\n== after main returns ==\n__week06_start calls week06::exit(0), and the test finisher ends QEMU\nwithout it there is nothing to return to: the CPU would run into whatever is next\n",
      "exit": 0,
      "timed_out": false,
      "replacement_chars": 0

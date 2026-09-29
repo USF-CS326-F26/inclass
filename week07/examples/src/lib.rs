@@ -1,9 +1,9 @@
-//! The week 6 runtime: just enough for a program to boot on QEMU's `virt`
+//! The week 7 runtime: just enough for a program to boot on QEMU's `virt`
 //! machine, print, and power off. Every program in `src/bin/` uses it, and
 //! none of it is on the examples page. The programs are.
 //!
 //! ```text
-//!   the ROM jumps to 0x8000_0000 ── _entry ──► __week06_start ──► main()
+//!   the ROM jumps to 0x8000_0000 ── _entry ──► __week07_start ──► main()
 //!                                    (entry!)      (entry!)          │
 //!                                                  exit(0) ◄─────────┘
 //! ```
@@ -13,11 +13,11 @@
 //! hands the report to `report_panic`:
 //!
 //! ```ignore
-//! week06::entry!(main);
+//! week07::entry!(main);
 //!
 //! #[panic_handler]
 //! fn panic(info: &core::panic::PanicInfo) -> ! {
-//!     week06::report_panic(info)
+//!     week07::report_panic(info)
 //! }
 //! ```
 //!
@@ -84,10 +84,55 @@ pub fn report_panic(info: &core::panic::PanicInfo) -> ! {
     exit(1)
 }
 
+/// A number the way the lecture writes addresses and entries: `0x8123_4000`,
+/// uppercase, with `_` between groups of four digits. `{:.8}` asks for at
+/// least eight digits, and a width such as `{:>13}` pads it like a string.
+pub struct Hex<T>(pub T);
+
+/// The integer types `Hex` takes. `i32` is here because an integer literal
+/// with no suffix is one: `Hex((1 << 12) - 1)`.
+pub trait Word: Copy {
+    fn word(self) -> u64;
+}
+
+macro_rules! word {
+    ($($t:ty)*) => { $(impl Word for $t { fn word(self) -> u64 { self as u64 } })* };
+}
+word!(u8 u16 u32 u64 usize i32 i64);
+
+impl<T: Word> fmt::Display for Hex<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut buf = [0u8; 24];
+        let (mut at, mut v, mut i) = (buf.len(), self.0.word(), 0);
+        while v != 0 || i < f.precision().unwrap_or(1) {
+            if i > 0 && i % 4 == 0 {
+                at -= 1;
+                buf[at] = b'_';
+            }
+            at -= 1;
+            buf[at] = b"0123456789ABCDEF"[(v & 0xF) as usize];
+            (v, i) = (v >> 4, i + 1);
+        }
+        at -= 2;
+        buf[at..at + 2].copy_from_slice(b"0x");
+        let s = core::str::from_utf8(&buf[at..]).unwrap();
+        let pad = f.width().unwrap_or(0).saturating_sub(s.len());
+        let right = matches!(f.align(), Some(fmt::Alignment::Right));
+        for _ in 0..if right { pad } else { 0 } {
+            f.write_str(" ")?;
+        }
+        f.write_str(s)?;
+        for _ in 0..if right { 0 } else { pad } {
+            f.write_str(" ")?;
+        }
+        Ok(())
+    }
+}
+
 /// `entry!(main)` makes the program bootable. It emits `_entry`, where the
 /// boot ROM's jump lands, into the `.entry` section that `link.ld` places at
 /// 0x8000_0000. `_entry` points `sp` at the stack `link.ld` reserves and
-/// jumps to `__week06_start`, which turns the FPU on, runs `main`, and
+/// jumps to `__week07_start`, which turns the FPU on, runs `main`, and
 /// powers off.
 #[macro_export]
 macro_rules! entry {
@@ -97,13 +142,13 @@ macro_rules! entry {
             ".globl _entry",
             "_entry:",
             "    la   sp, __stack_top",
-            "    j    __week06_start",
+            "    j    __week07_start",
             ".popsection",
         );
 
         #[doc(hidden)]
         #[no_mangle]
-        pub extern "C" fn __week06_start() -> ! {
+        pub extern "C" fn __week07_start() -> ! {
             // Reset leaves the FPU off (mstatus.FS = 0), and the first float
             // instruction, such as formatting an f64, would trap to mtvec = 0
             // and hang the machine without a word. Turn it on first, in t0

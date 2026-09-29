@@ -73,10 +73,14 @@ fn panic(info: &core::panic::PanicInfo) -> ! {      // 30k: every no_std program
 }
 ```
 
-- `entry!(main)` emits `_entry`, the first instruction QEMU runs: it points
+- `entry!(main)` emits `_entry`, where the boot ROM's jump lands: it points
   `sp` at the stack `link.ld` reserves and jumps to `__week06_start`, which
-  calls `main` and then powers off. Program 12 prints every one of those
-  addresses.
+  turns the FPU on, calls `main`, and then powers off. The ROM's six
+  instructions at `0x1000` run before any of it (step 6 below shows them),
+  and program 12 prints every one of those addresses.
+- The FPU starts off: QEMU resets with `mstatus.FS = 0`, and without the
+  runtime's two instructions the first floating-point instruction, such as
+  formatting an `f64`, would trap to `mtvec = 0` and hang with no message.
 - `println!` and `print!` are `core::fmt` writing bytes to the UART's
   transmit register at `0x1000_0000`. With no heap, formatting still works
   (program 11).
@@ -85,6 +89,170 @@ fn panic(info: &core::panic::PanicInfo) -> ! {      // 30k: every no_std program
 
 rv6 has its own version of each piece; none of these is course code you
 will be asked to write.
+
+## Step by step, on screen
+
+`cargo run` does two things at once: it builds a RISC-V ELF, then hands it to
+QEMU. These steps take it apart, from `week06/examples`. The addresses in
+the output shown are from one build and move when the code does.
+
+Rust's own LLVM tools read the ELF. They come with the toolchain but are not
+on your `PATH` (`rustup component add llvm-tools` if the directory is empty):
+
+```sh
+cd week06/examples
+BIN="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin"
+E=target/riscv64gc-unknown-none-elf/debug
+```
+
+**0. The one-liner.** Start with the whole thing:
+
+```sh
+cargo run --bin 01_registers
+```
+
+Point at cargo's `Running` line: `qemu-system-riscv64 -machine virt -bios none
+… -kernel target/riscv64gc-unknown-none-elf/debug/01_registers`. Every step
+below is a piece of that.
+
+**1. Where the settings live.**
+
+```sh
+cat .cargo/config.toml Cargo.toml
+```
+
+`target = "riscv64gc-unknown-none-elf"` is RISC-V with no OS;
+`-Clink-arg=-Tlink.ld` is our own memory layout; `runner = …` is what
+`cargo run` hands the ELF to. `Cargo.toml` adds `panic = "abort"` and
+`opt-level = 1`.
+
+**2. Compile, showing rustc's real command lines.**
+
+```sh
+touch src/bin/01_registers.rs
+cargo build -v --bin 01_registers
+```
+
+There are two `rustc` runs: `--crate-name week06 src/lib.rs`, the runtime,
+then `--crate-name 01_registers src/bin/01_registers.rs`. In the second,
+point at `--target riscv64gc-unknown-none-elf`,
+`--extern week06=…/libweek06-….rlib`, `-C opt-level=1 -C panic=abort` and
+`-Clink-arg=-Tlink.ld`.
+
+**3. What came out, and why the Mac cannot run it.**
+
+```sh
+file $E/01_registers      # ELF 64-bit LSB executable, UCB RISC-V, ... statically linked
+./$E/01_registers         # exec format error (exit 126)
+```
+
+RISC-V instructions, and no OS to start them: only QEMU can.
+
+**4. Look inside the ELF.**
+
+```sh
+"$BIN/llvm-objdump" -f $E/01_registers        # start address: 0x0000000080000000
+"$BIN/llvm-objdump" -h $E/01_registers        # .text at 0x80000000, then .rodata, .data, .bss
+cargo build -q --bin 12_who_calls_main
+"$BIN/llvm-nm" -n $E/12_who_calls_main | grep -E ' (_entry|__week06_start|etext|end|__stack_top)$'
+"$BIN/llvm-objdump" -d --no-show-raw-insn --start-address=0x80000000 --stop-address=0x8000000c $E/01_registers
+```
+
+The last one is all of `_entry`:
+
+```
+80000000:  auipc sp, 0x5
+80000004:  addi  sp, sp, 0x660        together: la sp, __stack_top
+80000008:  j     0x800001f4 <__week06_start>
+```
+
+And program 02's assembly, after the assembler:
+
+```sh
+cargo build -q --bin 02_calling_assembly
+"$BIN/llvm-objdump" -d --no-show-raw-insn --disassemble-symbols=find_byte $E/02_calling_assembly
+```
+
+The local labels `1b` and `2f` are gone; they became plain addresses
+(`find_byte`, `find_byte+0x10`).
+
+**5. Run QEMU by hand.**
+
+```sh
+qemu-system-riscv64 -machine virt -bios none -m 128M -smp 1 -nographic -serial mon:stdio -kernel $E/01_registers
+echo $?        # 0: main returned, and the runtime stored 0x5555 to the test finisher
+```
+
+| Flag | Says |
+|---|---|
+| `-machine virt` | the board: UART at `0x1000_0000`, test finisher at `0x10_0000`, RAM at `0x8000_0000` |
+| `-bios none` | no firmware: the boot ROM jumps straight to our ELF |
+| `-m 128M` | RAM ends at `0x8800_0000` |
+| `-smp 1` | one hart |
+| `-nographic -serial mon:stdio` | the UART is your terminal, with QEMU's monitor behind <kbd>Ctrl</kbd>-<kbd>A</kbd> <kbd>c</kbd> |
+| `-kernel` | load this ELF at the addresses it names |
+
+Then a failure status: `cargo build -q --bin 13_the_panic_handler`, the same
+line with `-kernel $E/13_the_panic_handler`, and `echo $?` prints `1`.
+
+**6. Watch the first instructions the CPU runs.**
+
+```sh
+qemu-system-riscv64 -machine virt -bios none -m 128M -smp 1 -nographic -serial mon:stdio \
+  -d in_asm -D qemu.log -kernel $E/01_registers
+grep '^0x' qemu.log | head -12
+```
+
+The machine from reset, in order:
+
+- `0x1000`–`0x1014`: the boot ROM's six instructions, ending in `jr t0`
+- `0x8000_0000`: `_entry`'s `auipc sp` and `addi sp`, then `j`
+- `__week06_start`: `addi sp,sp,-16` and `sd ra,8(sp)`, the prologue from
+  the exam slide, then `lui t0,2` and `csrrs zero,mstatus,t0`, the runtime
+  turning the FPU on (`2 << 12` is `1 << 13`, `mstatus.FS`)
+
+`qemu.log` is git-ignored; delete it when you are done.
+
+**7. Stop at reset and look around.** Add `-S`, and the CPU waits before its
+first instruction:
+
+```sh
+qemu-system-riscv64 -machine virt -bios none -m 128M -smp 1 -nographic -serial mon:stdio -S -kernel $E/01_registers
+```
+
+<kbd>Ctrl</kbd>-<kbd>A</kbd> then <kbd>c</kbd> gives the `(qemu)` prompt.
+`info registers` shows `pc 0000000000001000`, the boot ROM, and `sp` is
+`0000000000000000`: there is no stack yet, which is why `_entry` exists.
+`cont` runs the program, which prints and exits.
+<kbd>Ctrl</kbd>-<kbd>A</kbd> then <kbd>x</kbd> quits at any point.
+
+**8. What the optimizer did without `volatile` (program 09).**
+
+```sh
+cargo build -q --bin 09_volatile_matters
+"$BIN/llvm-objdump" -d -C --no-show-raw-insn $E/09_volatile_matters | grep -E -A2 'li\s+\w+, 0x4[12]$'
+```
+
+```
+li  s4, 0x42 ; sb s4, 0x0(s3)                     plain: only 'B' is stored
+li  a0, 0x41 ; sb a0, 0x0(s3) ; sb s4, 0x0(s3)    volatile: 'A', then 'B'
+```
+
+The plain `'A'` store is not in the binary at all: that is why the page says
+`the UART received: B`.
+
+**9. The broken files: compiled, never run.**
+
+```sh
+./show-errors.sh e0463
+rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null broken/e0463_forgot_no_std.rs
+```
+
+The second line is what the script runs for each file.
+
+There is no RISC-V GDB on a stock Mac, so the monitor in step 7 is the
+in-class debugger; the course site's QEMU and GDB guide covers GDB for
+anyone who has it.
 
 ## The thirteen programs
 
@@ -101,7 +269,7 @@ will be asked to write.
 | `09_volatile_matters` | plain device accesses get merged, dropped, or hoisted | `the UART received: B` |
 | `10_unsafe_does_not_turn_off` | `unsafe` unlocks five operations and turns nothing off | `pub fn end_of(s: &Span) -> u64` |
 | `11_what_core_still_has` | `no_std` removes the OS, not the language | `write!` into a 48-byte buffer on the stack |
-| `12_who_calls_main` | `no_main`: the program names its own first instruction | `_entry 0x80000000` |
+| `12_who_calls_main` | `no_main`: the program names its own entry point | `_entry 0x80000000` |
 | `13_the_panic_handler` | every `no_std` program says what a panic does, once | `fn panic(info: &PanicInfo) -> !` |
 
 ## The seven failures

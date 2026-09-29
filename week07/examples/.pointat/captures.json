@@ -1,0 +1,561 @@
+{
+ "tool": "pointat/1",
+ "week": "week07",
+ "captured_at": "2026-09-29T06:56:32-07:00",
+ "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+ "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+ "os": "macOS 26.6.2 arm64",
+ "build": {
+  "success": true,
+  "stderr": ""
+ },
+ "programs": {
+  "01_the_boot_rom": {
+   "source_sha1": "a7f89c3afbdbdcc8cd5a8daf3ec97bb5895f7bd7",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 01_the_boot_rom",
+     "args": [],
+     "output": "== the hart, as reset left it ==\nmhartid = 0      this hart's ID; -smp 1 starts only this one\nmtvec   = 0x0    a fault would jump to address 0: no handler is set\nmisa    = 0x80000000001411ad: RV64 with ACDFHIMSU\nIMAFD (plus Zicsr, Zifencei) is the g in riscv64gc, and C is the c\nS and U: supervisor and user mode. H: hypervisor\nreading mhartid, misa and mtvec did not trap: this is machine mode\n\n== the six instructions at 0x1000 ==\n0x1000  00000297  auipc t0, 0x0\n0x1004  02828613  addi  a2, t0, 40\n0x1008  f1402573  csrr  a0, mhartid\n0x100c  0202b583  ld    a1, 32(t0)\n0x1010  0182b283  ld    t0, 24(t0)\n0x1014  00028067  jr    t0\nauipc t0, 0x0 sets t0 to its own address, 0x1000; the rest count from there\n\n== the words the ROM loads ==\n[t0 + 24] = 0x80000000   loaded into t0, then jr t0\n            the RAM base, where QEMU copied this program\n[t0 + 32] = 0x87e00000   loaded into a1: the device tree\n            magic 0xd00dfeed, 5028 bytes long\n[t0 + 40] = \"OSBI\"       where a2 points: a table for OpenSBI, unused here\n\n== the board, as its device tree describes it ==\ntest    0x00100000      0x1000 bytes   the test finisher\nclint   0x02000000     0x10000 bytes   the CLINT: the timer\nplic    0x0c000000    0x600000 bytes   the PLIC: routes device interrupts\nserial  0x10000000       0x100 bytes   the UART\nmemory  0x80000000   0x8000000 bytes   RAM\nRAM is 128 MiB and ends at 0x88000000\nthe tree itself sits 2 MiB below that end\nrv6 never reads the tree: it hardcodes these addresses, so it boots on virt only\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "02_where_the_linker_put_it": {
+   "source_sha1": "029df2ce9b6eda2b4b8641f9575a8ef958ca7b1d",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 02_where_the_linker_put_it",
+     "args": [],
+     "output": "== one item of each kind, in address order ==\n_entry       0x80000000   .entry: first, where the ROM jumps\nmain         0x80000014   .text\netext        0x80002000   the end of the code, rounded up to a page\nGREETING     0x80002221   .rodata: a string literal's bytes\nCOUNT        0x80002ce0   .data: a static mut that starts at 326\nTABLE        0x80002cf0   .bss: 512 u64s that start as zeros\nend          0x80003cf0   the first address past the image\n__stack_top  0x80007cf0   the top of the 16 KiB stack\nin increasing order: true, as link.ld lists them\n_entry is first because link.ld lists *(.entry) first\nENTRY(_entry) only fills in the ELF header, which the ROM never reads\n\n== how big each part is ==\ncode   etext - _entry             8192 bytes: 2 pages, the last one padded\ndata   end - etext                7408 bytes: everything after the code\nstack  __stack_top - end         16384 bytes: reserved by link.ld\nfree   PHYSTOP - __stack_top 134185744 bytes: this program never touches them\n\n== end is an address, not a value ==\n&end as *const u8 as usize = 0x80003cf0\nin rv6 free memory starts here. This runtime puts its stack here instead,\nso here free memory starts at __stack_top (program 08)\nthe byte at end holds 0: it means nothing (here, the stack's lowest byte)\nend - TABLE = 4096, and TABLE is 4096 bytes: nothing follows it\nmake TABLE bigger and end moves up with it: a symbol, not a constant\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "03_the_boot_stack": {
+   "source_sha1": "6703786cd9b806adad30e51cdad3635859b7f19e",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 03_the_boot_stack",
+     "args": [],
+     "output": "== where sp starts ==\n__stack_top = 0x800070a0   the high end, where _entry pointed sp\nend         = 0x800030a0   the low end, 16384 bytes below\nsp in main  = 0x80006f70   304 bytes down: the runtime's frame and main's\nsp % 16     = 0   the calling convention keeps sp 16-byte aligned\n\n== each call moves it down ==\ndescend depth 0: sp = 0x80006f50   32 bytes below main's\ndescend depth 1: sp = 0x80006f30   64 bytes below main's\ndescend depth 2: sp = 0x80006f10   96 bytes below main's\ndescend depth 3: sp = 0x80006ef0   128 bytes below main's\ndescend depth 4: sp = 0x80006ed0   160 bytes below main's\neach call claimed 32 bytes for its frame; each return gave them back\n\n== what 16 KiB buys ==\nthe free stack below main is painted with 0x5a5a5a5a5a5a5a5a\nprinting that line wrote as deep as 352 bytes below main's sp\nroom left below main: 16080 bytes = 502 more calls of descend\n\n== nothing guards the low end ==\nFLOOR, 512 bytes of .bss, ends at end: true\ndig called itself until sp = 0x80003010, 144 bytes below end\nwords of FLOOR the frames overwrote: 18 of 64\nFLOOR[63], just below end, now holds 0x8000009c = dig + 0x12\nthat is a return address: a frame of dig saved its ra there\nno fault and no message: in machine mode, nothing marks the memory below end off-limits\na stub that started sp at end, the low end, would do this from the first prologue\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "04_reset_to_rust": {
+   "source_sha1": "e9d26669404b26beb0609a387a76c338a9ccf913",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 04_reset_to_rust",
+     "args": [],
+     "output": "== 1. QEMU loaded the image before the first instruction ==\n[0x80000000] = 0x00007117   _entry's first instruction, loaded before any ran\nSEEDED       = 326          .data: the value came in the ELF\nCLEARED      all zero: true   .bss: the ELF records only its size\nnothing in this program stores to SEEDED or CLEARED: QEMU's loader did both\n\n== 2, 3. reset: the ROM ran, then jumped to _entry ==\na0 = 0            from csrr a0, mhartid: mhartid is 0\na1 = 0x87e00000   from ld a1, 32(t0): the ROM's word there is 0x87e00000\na2 = 0x1028       from addi a2, t0, 40: an address inside the ROM itself\nall three match: true. Nothing between the ROM and main wrote them\na1 and a2 are the proof: QEMU zeroes every register at reset, so a0 is 0 either way\njump target 0x80000000 == _entry 0x80000000: true\nstep 3 needs step 1: the ROM jumps there whether or not anything was loaded\n\n== 4, 5. sp at the top, then the first Rust frame ==\n__stack_top       0x80007350   where _entry pointed sp, then jumped to __week07_start\n__stack_top - 8   0x0          __week07_start's saved ra: reset's 0; a jump sets no ra\n__stack_top - 16  0x0          padding: its frame is 16 bytes, to keep sp aligned\n__stack_top - 24  0x800003c6   main's saved ra: __week07_start + 0x12\nmatches main's ra: true. The frames start right at __stack_top: _entry pushed nothing\nstep 5 needs step 4: Rust's very first store went through sp, 8 bytes below the top\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "05_page_number_and_offset": {
+   "source_sha1": "e5e71cbded7142334953c270574723c2f00d8c6b",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 05_page_number_and_offset",
+     "args": [],
+     "output": "== page number and offset ==\nmain          0x8000_0052   number 0x8_0000   offset  0x52\netext         0x8000_3000   number 0x8_0003   offset   0x0\na local       0x8000_8238   number 0x8_0008   offset 0x238\n__stack_top   0x8000_83E0   number 0x8_0008   offset 0x3E0\nthe UART      0x1000_0000   number 0x1_0000   offset   0x0\n>> 12 is / 4096 and & 0xFFF is % 4096, for every one: true\nnumber * 4096 + offset gives each address back: true\nthe shift and the mask work only because 4096 is a power of two, 2^12\n\n== the page it falls in ==\nmain         in page  0x8000_0000   RAM page 0\netext        in page  0x8000_3000   RAM page 3\na local      in page  0x8000_8000   RAM page 8\n__stack_top  in page  0x8000_8000   RAM page 8\nthe UART     in page  0x1000_0000   below 0x8000_0000: not RAM\nRAM has 32768 pages: page 0 is 0x8000_0000, and the last, 32767, is 0x87FF_F000\na local is 424 bytes below __stack_top: main's frame is near the top of the stack\n\n== aligned means low zero bits ==\nthe lecture   0x8002_3D40    6 low zero bits           64-byte aligned   page-aligned: false\netext         0x8000_3000   12 low zero bits         4096-byte aligned   page-aligned: true\na local       0x8000_8238    3 low zero bits            8-byte aligned   page-aligned: false\nKERNBASE      0x8000_0000   31 low zero bits   2147483648-byte aligned   page-aligned: true\n0x8002_3D40 ends in 40: six zero bits, so 64-byte aligned, not page-aligned\netext is page-aligned because link.ld says ALIGN(0x1000) just before it\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "06_why_one_page_size": {
+   "source_sha1": "446bf5b054c2d4b2e6c4ba2c8854f7f606eba92c",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 06_why_one_page_size",
+     "args": [],
+     "output": "== a request, in whole pages ==\n     8 bytes  ->  1 page      4096 bytes given    4088 unused\n   100 bytes  ->  1 page      4096 bytes given    3996 unused\n  4000 bytes  ->  1 page      4096 bytes given      96 unused\n  4096 bytes  ->  1 page      4096 bytes given       0 unused\n  4097 bytes  ->  2 pages     8192 bytes given    4095 unused\n  5000 bytes  ->  2 pages     8192 bytes given    3192 unused\n 12288 bytes  ->  3 pages    12288 bytes given       0 unused\nn.div_ceil(4096) rounds the count up\n4096 and 12288 fit exactly, and 4097 costs a second page\n\n== the waste stays inside the block ==\nasked for 29589 bytes, given 45056: 15467 unused\na 100-byte request uses 2.4% of its page\none request can waste at most 4095 bytes: ask for 1, or for 4097\nthat loss is internal fragmentation\nweek 10's first heap gives every request a page of its own\nso an 8-byte Box there leaves 4088 bytes idle, like the first row above\n\n== two pages are not one buffer ==\nthe lecture's trace hands out 0x8710_3000, then 0x8710_5000\npage numbers 0x8_7103 and 0x8_7105: 2 apart\na 5000-byte buffer needs page numbers p and p + 1; these are not\nthe free list gives one page per call and cannot promise neighbors (Going deeper)\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "07_a_page_holds_an_address": {
+   "source_sha1": "791f6f38282578c9e8dcdad642cca0ffdf4f8562",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 07_a_page_holds_an_address",
+     "args": [],
+     "output": "== two pages nobody uses ==\n__stack_top   0x8000_8430   the stack grows down from here\npage P        0x8400_6000   above __stack_top: true   below 0x8800_0000: true\npage Q        0x8400_A000   above __stack_top: true   page-aligned: true\nthis program keeps nothing above __stack_top, so both are free\nP's first usize before the store: 0x0\nQEMU starts RAM zeroed; real hardware makes no such promise\n\n== one store, through a cast ==\n*(P as *mut usize) = Q      stored 0x8400_A000\nP's first usize, read back: 0x8400_A000\nQ's own first usize is still 0x0\nP holds Q's address, and Q itself was never touched\n\n== the same bytes, one at a time ==\nP + 0 .. P + 8:  [00, A0, 00, 84, 00, 00, 00, 00]\nlow byte first, because RISC-V is little-endian\nfrom_le_bytes gives Q back: true\nnonzero bytes in P + 8 .. P + 4096: 0   the store wrote 8 bytes and no more\n\n== what the record costs ==\nsize_of::<usize>() = 8, and size_of::<*mut u8>() = 8: an address is 8 bytes\nthe page gives up 8 of its 4096 bytes, and only while it is free\nonce a page is handed out, nothing reads that word, and its owner may overwrite all 4096\nso taking a page back needs no memory of its own, and cannot fail for lack of it\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "08_where_free_memory_starts": {
+   "source_sha1": "28e15f340fdef24ab6c643e9fa3b580fcbe499b4",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 08_where_free_memory_starts",
+     "args": [],
+     "output": "== the stack is already in use ==\nend           0x8000_43E0   the image stops here\n__stack_top   0x8000_83E0   end + 16384 bytes of stack\na local       0x8000_8300   in [end, __stack_top): true\nprogram 02 prints the whole layout; here only the stack matters\nsp started at __stack_top before main ran, so free memory starts there, not at end\n\n== round __stack_top up to a page ==\n__stack_top              0x8000_83E0\nadd 0xFFF                0x8000_93DF   in the next page now: true\nclear the low 12 bits    0x8000_9000   the first whole page nobody uses\netext, the same way      0x8000_3000   already aligned, so it stays put: true\n0xFFF = 111111111111: twelve ones, because 4096 is a power of two\nso clearing the low 12 bits is zeroing the last three hex digits\n\n== two ways to get it wrong ==\nround down instead       0x8000_8000   the clear step alone\n  that page starts inside the stack: true\n  its first 992 bytes are the top of the stack, where the first frames go\nround up end instead     0x8000_5000   right for rv6, whose stack is below end\n  inside this program's stack: true, 13280 bytes below __stack_top\nhand out a page of the stack, and the page's new owner\nand the next function call write the same bytes\n\n== whole pages up to 0x8800_0000 ==\nfirst page    0x8000_9000\nlast page     0x87FF_F000   0x8800_0000 - 0x1000\npages        (0x8800_0000 - 0x8000_9000) >> 12 = 32759\ncheck        32768 in RAM - 9 below 0x8000_9000 = 32759\ncount from both ends, and the two must agree: true\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "09_bits_by_hand": {
+   "source_sha1": "10e6d64588e38243446a60dd17a9ceac9ee3d379",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 09_bits_by_hand",
+     "args": [],
+     "output": "== four moves ==\nshift    0x8_1234 << 12              = 0x8123_4000\nmask     (1 << 12) - 1 = 0xFFF   (1 << 10) - 1 = 0x3FF   (1 << 9) - 1 = 0x1FF\nextract  (0x8123_4ABC >> 12) & 0x1FF = 0x34\npack     (0x5 << 4) | 0x3            = 0x53\nclear    0x8123_4ABC & !0xFFF        = 0x8123_4000\na shift by 4 moves one hex digit, and by 12 moves three: 0x8_1234 << 4 = 0x81_2340\n\n== a FAT date ==\npack_date(46, 10, 9) = 0x5D49\nin binary: 0101110 1010 01001   year, month, day\nmonth(0x5D49) = 10\nunmasked:  0x5D49 >> 5 = 0x2EA, the year still attached\nyear: date >> 9 = 46, so 2026\nday:  date & 0x1F = 9\nslide the field down to bit 0, then keep only its width\n\n== nothing checks that a field fits ==\npack_date(46, 10, 32) = 0x5D60: month 11, day 0\n32 is 0b10_0000, six bits: the sixth landed in the month\nOctober became November, and the day became 0\npack_date(128, 1, 1)  = 0x21: year 0, so 1980\n128 needs eight bits: its top one went past bit 15 and off the u16\na FAT date cannot say 2108; the last year it holds is 1980 + 127 = 2107\n\n== Rust's operators are not C's ==\n!0xFFF = 0xFFFF_FFFF_FFFF_F000: Rust's bitwise NOT is `!`, and `~` does not exist in Rust\nflags = 0x6, so W (0x4) is set\nRust: flags & 0x4 != 0 is true: it reads (flags & 0x4) != 0\nC:    flags & 0x4 != 0 is 0, false: it reads flags & (0x4 != 0), so 0x6 & 1\nC's != binds tighter than &, so C misses the W bit; with parentheses both agree\n1u16.checked_shl(15) = Some(32768), 1u16.checked_shl(16) = None\nwith overflow checks on, a u16 `<<` panics only for a shift of 16 or more\nbits pushed off the top, as in 2108 above, vanish without a word\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "10_split_the_address": {
+   "source_sha1": "3a8c89282d0347db9dbfe0e4cbf3475c22accc09",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 10_split_the_address",
+     "args": [],
+     "output": "== the lecture's address, by hand ==\nva         = 0x20_00A0_35F0\nva >> 12   =  0x200_0A03   & 0x1FF =   3   VPN[0]\nva >> 21   =    0x1_0005   & 0x1FF =   5   VPN[1]\nva >> 30   =        0x80   & 0x1FF = 128   VPN[2]\nva & 0xFFF =       0x5F0                   offset\n(128 << 30) | (5 << 21) | (3 << 12) | 0x5F0 = 0x20_00A0_35F0\neach index is nine bits, 0 to 511; the pieces add back up to the address\n\n== what one entry covers ==\nan entry at level 0: 1 << 12 =       4096 bytes, 4 KiB\nan entry at level 1: 1 << 21 =    2097152 bytes, 2 MiB = 512 x 4 KiB\nan entry at level 2: 1 << 30 = 1073741824 bytes, 1 GiB = 512 x 2 MiB\n                           address   VPN[2] VPN[1] VPN[0]   offset\nva                  0x20_00A0_35F0      128      5      3   0x5F0\nva + 4 KiB          0x20_00A0_45F0      128      5      4   0x5F0\nva + 2 MiB          0x20_00C0_35F0      128      6      3   0x5F0\nva + 1 GiB          0x20_40A0_35F0      129      5      3   0x5F0\neach step moves one index by one, and the offset never moves\na flat table for all 2^27 pages: 2^27 x 8 bytes = 1 GiB, per process\na tree has tables only where something is mapped: 12 KiB for a first page\n\n== this program's own addresses ==\n                           address   VPN[2] VPN[1] VPN[0]   offset\nmain                   0x8000_0014        2      0      0   0x014\na static               0x8000_3000        2      0      3   0x000\nend                    0x8000_44C0        2      0      4   0x4C0\na local                0x8000_8398        2      0      8   0x398\nlast RAM byte          0x87FF_FFFF        2     63    511   0xFFF\nRAM starts at 0x8000_0000, which is 2 GiB: all of it is root entry 2\n128 MiB of RAM is 64 x 2 MiB, so VPN[1] runs from 0 to 63 across it\nmapped with 4 KiB pages: 32768 leaves, in 64 level-0 tables of 512\nadd one level-1 table and the root: 66 pages of tables\nrv6's kernel will map RAM to itself, so these are its virtual addresses too\n\n== the top: MAXVA ==\nMAXVA = 1 << 38 = 0x40_0000_0000: one bit short of 39\n                           address   VPN[2] VPN[1] VPN[0]   offset\nTRAMPOLINE          0x3F_FFFF_F000      255    511    511   0x000\nMAXVA               0x40_0000_0000      256      0      0   0x000\nTRAMPOLINE is the top page below MAXVA: root entry 255, the last below bit 38\nMAXVA itself would be root entry 256: entries 256 to 511 all have bit 38 set\nSv39 wants bits 63..39 to copy bit 38, so 1 << 38 is legal only as 0xFFFF_FFC0_0000_0000\nrv6 stays below MAXVA, so no address it uses needs sign extension\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "11_pte_by_hand": {
+   "source_sha1": "b99b14f9e8f9a9c816acd6ad02a234dac3a231aa",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 11_pte_by_hand",
+     "args": [],
+     "output": "== encode 0x8123_4000 as V R W ==\npa          0x8123_4000\npa >> 12    0x0008_1234   the PPN: three hex digits dropped\nPPN << 8    0x0812_3400   two zero digits appended\ntimes 4     0x2048_D000   that makes << 10\n| V R W     0x2048_D007   the flags, 1 + 2 + 4 = 7\nthe PPN now starts at bit 10, and the flags fill bits 9..0\n\n== decode it, reading upward ==\nentry          0x2048_D007\nentry & 0x3FF  0x007         flags V R W\nentry >> 10    0x0008_1234   the PPN\nPPN << 12      0x8123_4000   the address\nR and W are set, so this is a leaf: the address is the mapped page\nentry        flags  address      kind\n0x2048_D001  V      0x8123_4000  a branch: the address is the next table\n0x21FF_F401  V      0x87FF_D000  a branch: the address is the next table\n0x2014_8C07  V R W  0x8052_3000  a leaf: the address is the mapped page\n0x0000_0000  none   0x0000_0000  invalid: V is clear, and no other bit means anything\nlow digit 1, V alone: the same PPN is now a table, not a page\nthe middle two are from the lecture's walk: level 1's entry 5, level 0's entry 3\n\n== two slips ==\n(entry >> 12) << 12 = 0x2048_D000   page-aligned, plausible, and wrong\n(entry >> 10) << 12 = 0x8123_4000   right: the PPN starts at bit 10\npa             (pa >> 12) << 10       pa >> 2\n0x8123_4000         0x2048_D000   0x2048_D000\n0x8123_4ABC         0x2048_D000   0x2048_D2AF\nfor an aligned pa the two agree, so pa >> 2 looks like a shortcut\nunaligned, (pa >> 2) & 0x3FF = 0x2AF: flags V R W X G D, and RSW = 2\nthe offset turned into flags, W and X among them\n>> 12 drops the offset first, and only then does << 10 make room for flags\n\n== a newtype is only its integer ==\nfb = 0x8600_0000, fb.add(640) = 0x8600_0A00: 640 pixels along is 2560 bytes\nstored Pixel(0x00C0_FFEE) at fb.add(640)\nread back as a u32:   0x00C0_FFEE\nread back as a Pixel: 0x00C0_FFEE, its .0\nsize_of::<Pixel>() = 4, align_of::<Pixel>() = 4: exactly a u32's\non 8-byte entries, .add(511) is 511 x 8 = 4088 bytes in: a table's last entry\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "12_satp_reads_zero": {
+   "source_sha1": "7938a73bc4cebf107031b5b38139296667db1529",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 12_satp_reads_zero",
+     "args": [],
+     "output": "== pack satp by hand ==\nMODE   8 << 60              = 0x8000_0000_0000_0000\nPPN    0x87FF_F000 >> 12    = 0x0000_0000_0008_7FFF\nsatp   MODE | PPN           = 0x8000_0000_0008_7FFF\n0x87FF_F000 is the top page of RAM, one page below 0x8800_0000\nsatp holds its page number, not its address: the low 12 bits are 0 anyway\n\n== and back ==\nsatp                        = 0x8000_0000_0008_7FFF\nsatp >> 60                  = 8   MODE: Sv39\n(satp >> 44) & 0xFFFF       = 0   the ASID\nsatp & ((1 << 44) - 1)      = 0x8_7FFF   the root's PPN\nthat << 12                  = 0x87FF_F000   the root table\nMODE  0: satp starts 0x0000_0000_0000_0000   Bare: no translation\nMODE  8: satp starts 0x8000_0000_0000_0000   Sv39: three levels\nMODE  9: satp starts 0x9000_0000_0000_0000   Sv48: four levels\nMODE 10: satp starts 0xA000_0000_0000_0000   Sv57: five levels\nstop at the PPN and you have 0x8_7FFF, a page number and not a table\n\n== the real satp ==\ncsrr satp = 0x0\nMODE 0, ASID 0, PPN 0x0: Bare, with no root table\nprogram 01 read the same 0 at reset, and nothing here writes it\nMODE 0 is paging off for supervisor and user mode\nmstatus.MPRV = 0: machine mode's own loads and stores are not translated\nits fetches never are, so this program runs on physical addresses either way\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "13_w_xor_x": {
+   "source_sha1": "1edf80fb41e1a88bb10cabdff7eca83d75204897",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 13_w_xor_x",
+     "args": [],
+     "output": "== with paging off, code is data ==\nanswer() = 7\nits first instruction, at 0x8000_03B0: 0x0070_0513   addi a0, zero, 7\naddi a0, zero, 42 packs as (42 << 20) | (10 << 7) | 0x13 = 0x02A0_0513\nstored it over the first instruction, then fence.i\nanswer() = 42\nmachine mode, no page table: every byte of RAM is readable, writable and executable\nin supervisor mode, with this page mapped R X, that store would be a page fault\n\n== X W R: the eight combinations with V set ==\nflags  X W R  letters  kind\n0x01   000    V        branch: the next table\n0x03   001    V R      leaf: read-only data\n0x05   010    V W      reserved: W without R\n0x07   011    V R W    leaf: data\n0x09   100    V X      leaf: execute-only code\n0x0B   101    V R X    leaf: code\n0x0D   110    V W X    reserved: W without R\n0x0F   111    V R W X  leaf: breaks W xor X\na leaf breaks W xor X when W (4) and X (8) are both set: a low hex digit of F\nW without R, X W R = 010 or 110, is reserved: the hardware faults on it\n\n== this program, split at etext ==\n_entry        0x8000_0000   code\nanswer        0x8000_03B0   code, and rewritten above\netext         0x8000_3000   the end of code, rounded up to a page\nend           0x8000_4830   the end of the data\n__stack_top   0x8000_8830   the top of the stack\netext & 0xFFF = 0: link.ld aligns it, so no page holds both code and data\n[0x8000_0000, etext) is 3 pages to map R X\n[etext, __stack_top) is 6 pages to map R W\nxv6 splits its kernel's map of RAM at etext this way\n\n== the top pages ==\nTRAMPOLINE  0x3F_FFFF_F000   0x0B  V R X  leaf: code\nTRAPFRAME   0x3F_FFFF_E000   0x07  V R W  leaf: data\ncode in one, data in the other: each keeps W xor X\nneither has U: supervisor mode may use both, and a user-mode access faults\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  }
+ },
+ "broken": {
+  "e0080_shift_past_the_type": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0080_shift_past_the_type.rs",
+   "rendered": "error[E0080]: attempt to shift left by `60_i32`, which would overflow\n  --> e0080_shift_past_the_type.rs:17:19\n   |\n17 | const SATP: u64 = (SV39 << 60) as u64 | (ROOT >> 12);\n   |                   ^^^^^^^^^^^^ evaluation of `SATP` failed here\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0080`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0080",
+     "message": "attempt to shift left by `60_i32`, which would overflow",
+     "rendered": "error[E0080]: attempt to shift left by `60_i32`, which would overflow\n  --> e0080_shift_past_the_type.rs:17:19\n   |\n17 | const SATP: u64 = (SV39 << 60) as u64 | (ROOT >> 12);\n   |                   ^^^^^^^^^^^^ evaluation of `SATP` failed here\n\n",
+     "spans": [
+      {
+       "ls": 17,
+       "le": 17,
+       "cs": 19,
+       "ce": 31,
+       "primary": true,
+       "label": "evaluation of `SATP` failed here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0080`.",
+     "rendered": "For more information about this error, try `rustc --explain E0080`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "952aaac30a8370ad294e207aebcf35331475a98a"
+  },
+  "e0133_extern_static_needs_unsafe": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0133_extern_static_needs_unsafe.rs",
+   "rendered": "error[E0133]: use of extern static is unsafe and requires unsafe function or block\n  --> e0133_extern_static_needs_unsafe.rs:22:6\n   |\n22 |     &end as *const u8 as usize\n   |      ^^^ use of extern static\n   |\n   = note: extern statics are not controlled by the Rust type system: invalid data, aliasing violations or data races will cause undefined behavior\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0133`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0133",
+     "message": "use of extern static is unsafe and requires unsafe function or block",
+     "rendered": "error[E0133]: use of extern static is unsafe and requires unsafe function or block\n  --> e0133_extern_static_needs_unsafe.rs:22:6\n   |\n22 |     &end as *const u8 as usize\n   |      ^^^ use of extern static\n   |\n   = note: extern statics are not controlled by the Rust type system: invalid data, aliasing violations or data races will cause undefined behavior\n\n",
+     "spans": [
+      {
+       "ls": 22,
+       "le": 22,
+       "cs": 6,
+       "ce": 9,
+       "primary": true,
+       "label": "use of extern static"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0133`.",
+     "rendered": "For more information about this error, try `rustc --explain E0133`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "05c71b1569c6e8e8cf1846106f3279a0fa2f4ddb"
+  },
+  "e0308_a_flag_test_is_not_a_bool": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0308_a_flag_test_is_not_a_bool.rs",
+   "rendered": "error[E0308]: mismatched types\n  --> e0308_a_flag_test_is_not_a_bool.rs:32:19\n   |\n32 |     let kind = if pte & V { \"valid\" } else { \"invalid\" };\n   |                   ^^^^^^^ expected `bool`, found `u64`\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0308",
+     "message": "mismatched types",
+     "rendered": "error[E0308]: mismatched types\n  --> e0308_a_flag_test_is_not_a_bool.rs:32:19\n   |\n32 |     let kind = if pte & V { \"valid\" } else { \"invalid\" };\n   |                   ^^^^^^^ expected `bool`, found `u64`\n\n",
+     "spans": [
+      {
+       "ls": 32,
+       "le": 32,
+       "cs": 19,
+       "ce": 26,
+       "primary": true,
+       "label": "expected `bool`, found `u64`"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0308`.",
+     "rendered": "For more information about this error, try `rustc --explain E0308`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "41e1202852b0496f0b3b83c164180b993a7c5a6f"
+  },
+  "e0308_usize_is_not_u64": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0308_usize_is_not_u64.rs",
+   "rendered": "error[E0308]: mismatched types\n  --> e0308_usize_is_not_u64.rs:36:23\n   |\n36 |     let root: usize = (satp & PPN_BITS) << 12;\n   |               -----   ^^^^^^^^^^^^^^^^^^^^^^^ expected `usize`, found `u64`\n   |               |\n   |               expected due to this\n   |\nhelp: you can convert a `u64` to a `usize` and panic if the converted value doesn't fit\n   |\n36 |     let root: usize = ((satp & PPN_BITS) << 12).try_into().unwrap();\n   |                       +                       +++++++++++++++++++++\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0308",
+     "message": "mismatched types",
+     "rendered": "error[E0308]: mismatched types\n  --> e0308_usize_is_not_u64.rs:36:23\n   |\n36 |     let root: usize = (satp & PPN_BITS) << 12;\n   |               -----   ^^^^^^^^^^^^^^^^^^^^^^^ expected `usize`, found `u64`\n   |               |\n   |               expected due to this\n   |\nhelp: you can convert a `u64` to a `usize` and panic if the converted value doesn't fit\n   |\n36 |     let root: usize = ((satp & PPN_BITS) << 12).try_into().unwrap();\n   |                       +                       +++++++++++++++++++++\n\n",
+     "spans": [
+      {
+       "ls": 36,
+       "le": 36,
+       "cs": 23,
+       "ce": 46,
+       "primary": true,
+       "label": "expected `usize`, found `u64`"
+      },
+      {
+       "ls": 36,
+       "le": 36,
+       "cs": 15,
+       "ce": 20,
+       "primary": false,
+       "label": "expected due to this"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0308`.",
+     "rendered": "For more information about this error, try `rustc --explain E0308`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "2659aad2deb0e794cb91f75304a5d4e033269203"
+  },
+  "e0369_pointer_plus_integer": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0369_pointer_plus_integer.rs",
+   "rendered": "error[E0369]: cannot add `usize` to `*mut u8`\n  --> e0369_pointer_plus_integer.rs:18:10\n   |\n18 |     page + PGSIZE\n   |     ---- ^ ------ usize\n   |     |\n   |     *mut u8\n   |\nhelp: consider using `wrapping_add` or `add` for pointer + {integer}\n   |\n18 -     page + PGSIZE\n18 +     page.wrapping_add(PGSIZE)\n   |\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0369`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0369",
+     "message": "cannot add `usize` to `*mut u8`",
+     "rendered": "error[E0369]: cannot add `usize` to `*mut u8`\n  --> e0369_pointer_plus_integer.rs:18:10\n   |\n18 |     page + PGSIZE\n   |     ---- ^ ------ usize\n   |     |\n   |     *mut u8\n   |\nhelp: consider using `wrapping_add` or `add` for pointer + {integer}\n   |\n18 -     page + PGSIZE\n18 +     page.wrapping_add(PGSIZE)\n   |\n\n",
+     "spans": [
+      {
+       "ls": 18,
+       "le": 18,
+       "cs": 5,
+       "ce": 9,
+       "primary": false,
+       "label": "*mut u8"
+      },
+      {
+       "ls": 18,
+       "le": 18,
+       "cs": 12,
+       "ce": 18,
+       "primary": false,
+       "label": "usize"
+      },
+      {
+       "ls": 18,
+       "le": 18,
+       "cs": 10,
+       "ce": 11,
+       "primary": true,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0369`.",
+     "rendered": "For more information about this error, try `rustc --explain E0369`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "852609a98cb3c3479f335d28ab7e4e87f8272dfe"
+  },
+  "e0606_reference_as_usize": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0606_reference_as_usize.rs",
+   "rendered": "error[E0606]: casting `&u8` as `usize` is invalid\n  --> e0606_reference_as_usize.rs:23:14\n   |\n23 |     unsafe { &end as usize }\n   |              ^^^^^^^^^^^^^\n   |\nhelp: remove the unneeded borrow\n   |\n23 -     unsafe { &end as usize }\n23 +     unsafe { end as usize }\n   |\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0606`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0606",
+     "message": "casting `&u8` as `usize` is invalid",
+     "rendered": "error[E0606]: casting `&u8` as `usize` is invalid\n  --> e0606_reference_as_usize.rs:23:14\n   |\n23 |     unsafe { &end as usize }\n   |              ^^^^^^^^^^^^^\n   |\nhelp: remove the unneeded borrow\n   |\n23 -     unsafe { &end as usize }\n23 +     unsafe { end as usize }\n   |\n\n",
+     "spans": [
+      {
+       "ls": 23,
+       "le": 23,
+       "cs": 14,
+       "ce": 27,
+       "primary": true,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0606`.",
+     "rendered": "For more information about this error, try `rustc --explain E0606`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "c4e662b1fd3c51a7fef2f1f8b54a98481a9e3f5d"
+  },
+  "e0614_an_address_is_not_a_pointer": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0614_an_address_is_not_a_pointer.rs",
+   "rendered": "error[E0614]: type `usize` cannot be dereferenced\n  --> e0614_an_address_is_not_a_pointer.rs:30:5\n   |\n30 |     *p = q;\n   |     ^^ can't be dereferenced\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0614`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0614",
+     "message": "type `usize` cannot be dereferenced",
+     "rendered": "error[E0614]: type `usize` cannot be dereferenced\n  --> e0614_an_address_is_not_a_pointer.rs:30:5\n   |\n30 |     *p = q;\n   |     ^^ can't be dereferenced\n\n",
+     "spans": [
+      {
+       "ls": 30,
+       "le": 30,
+       "cs": 5,
+       "ce": 7,
+       "primary": true,
+       "label": "can't be dereferenced"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0614`.",
+     "rendered": "For more information about this error, try `rustc --explain E0614`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "ed569b20bdee1151a12495cb926956433262281c"
+  },
+  "end_is_not_a_const": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null end_is_not_a_const.rs",
+   "rendered": "error: pointers cannot be cast to integers during const eval\n  --> end_is_not_a_const.rs:20:36\n   |\n20 | const FIRST_FREE: usize = unsafe { &end as *const u8 as usize };\n   |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: at compile-time, pointers do not have an integer value\n   = note: avoiding this restriction via `transmute`, `union`, or raw pointers leads to compile-time undefined behavior\n\nerror: aborting due to 1 previous error\n\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": null,
+     "message": "pointers cannot be cast to integers during const eval",
+     "rendered": "error: pointers cannot be cast to integers during const eval\n  --> end_is_not_a_const.rs:20:36\n   |\n20 | const FIRST_FREE: usize = unsafe { &end as *const u8 as usize };\n   |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: at compile-time, pointers do not have an integer value\n   = note: avoiding this restriction via `transmute`, `union`, or raw pointers leads to compile-time undefined behavior\n\n",
+     "spans": [
+      {
+       "ls": 20,
+       "le": 20,
+       "cs": 36,
+       "ce": 62,
+       "primary": true,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "6d34bbeb4d2a062e24fa241c9028dee63b02ed6e"
+  },
+  "tilde_is_not_an_operator": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null tilde_is_not_an_operator.rs",
+   "rendered": "error: `~` cannot be used as a unary operator\n  --> tilde_is_not_an_operator.rs:28:21\n   |\n28 |     let page = va & ~0xFFF;\n   |                     ^\n   |\nhelp: use `!` to perform bitwise not\n   |\n28 -     let page = va & ~0xFFF;\n28 +     let page = va & !0xFFF;\n   |\n\nerror: aborting due to 1 previous error\n\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": null,
+     "message": "`~` cannot be used as a unary operator",
+     "rendered": "error: `~` cannot be used as a unary operator\n  --> tilde_is_not_an_operator.rs:28:21\n   |\n28 |     let page = va & ~0xFFF;\n   |                     ^\n   |\nhelp: use `!` to perform bitwise not\n   |\n28 -     let page = va & ~0xFFF;\n28 +     let page = va & !0xFFF;\n   |\n\n",
+     "spans": [
+      {
+       "ls": 28,
+       "le": 28,
+       "cs": 21,
+       "ce": 22,
+       "primary": true,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "c530d35cf613a6287418b7982dffdf1ce2bd46fa"
+  }
+ },
+ "target": "riscv64gc-unknown-none-elf",
+ "runner": "QEMU emulator version 10.2.1"
+}

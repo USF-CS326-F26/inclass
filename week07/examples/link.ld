@@ -1,5 +1,5 @@
 /*
- * Linker script for the week 6 programs: the same layout as oslings'
+ * Linker script for the week 7 programs: the same layout as oslings'
  * asmlab.ld, plus a stack.
  *
  * QEMU's `virt` machine, started with `-bios none`, copies the ELF into RAM.

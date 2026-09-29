@@ -228,7 +228,7 @@ are. That lives in `tools/pointat.bands.js`, and it must agree with Python's
 real lexer:
 
 ```bash
-node tools/parity-bands.mjs          # 60 programs, 62 runs, 0 disagreements
+node tools/parity-bands.mjs          # 73 programs, 75 runs, 0 disagreements
 ```
 
 Run it after touching either the scanner or the mapping in `pointat.py`. It
