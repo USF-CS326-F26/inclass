@@ -1,0 +1,23 @@
+[package]
+name = "week06"
+version = "0.1.0"
+edition = "2021"
+
+# Each file in src/bin/ is its own bare-metal RISC-V program, and src/lib.rs is
+# the small runtime they share. `cargo run` boots one under QEMU (.cargo/):
+#   cargo run --bin 01_registers
+[dependencies]
+
+[lib]
+test = false
+doctest = false
+
+# Bare metal: there is nothing to unwind into. opt-level 1 so the compiler
+# does what it does to real kernels: program 09 is what that means for MMIO.
+# Overflow checks stay on, as in any dev build (program 13).
+[profile.dev]
+panic = "abort"
+opt-level = 1
+
+[profile.release]
+panic = "abort"

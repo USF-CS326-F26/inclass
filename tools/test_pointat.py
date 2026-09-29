@@ -692,6 +692,77 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(got["file"], "src/bin/03_slot_search.rs")
 
 
+class CrossTargetTest(unittest.TestCase):
+    """A week whose .cargo/config.toml names a target: week06, under QEMU."""
+
+    def setUp(self):
+        self.repo = Path(tempfile.mkdtemp())
+        self.saved = pa.REPO
+        pa.REPO = self.repo
+
+    def tearDown(self):
+        pa.REPO = self.saved
+        shutil.rmtree(self.repo, ignore_errors=True)
+
+    def config(self, week: str, text: str) -> None:
+        cfg = self.repo / week / "examples" / ".cargo" / "config.toml"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(text)
+
+    def test_config_names_the_target_and_splits_the_runner(self):
+        # week06/examples/.cargo/config.toml, which is asmlab's
+        self.config("week06", '[build]\ntarget = "riscv64gc-unknown-none-elf"\n\n'
+                              '[target.riscv64gc-unknown-none-elf]\nrunner = """\n'
+                              'qemu-system-riscv64 -machine virt -bios none \\\n-kernel """\n')
+        t = pa.cross_target("week06")
+        self.assertEqual(t.triple, "riscv64gc-unknown-none-elf")
+        self.assertEqual(t.runner, ["qemu-system-riscv64", "-machine", "virt", "-bios", "none", "-kernel"])
+
+    def test_a_host_week_is_not_cross(self):
+        self.assertIsNone(pa.cross_target("week04"))
+        self.config("week07", '[target.riscv64gc-unknown-none-elf]\nrustflags = ["-Tuser.ld"]\n')
+        self.assertIsNone(pa.cross_target("week07"))   # commands/: a target table, no [build] target
+
+    def test_the_runner_goes_first_and_the_exe_is_relative(self):
+        crate = self.repo / "weekXX" / "examples"
+        crate.mkdir(parents=True)
+        exe = str(crate / "target" / "t" / "debug" / "01_x")
+        runner = [sys.executable, "-c", "import sys; print(sys.argv[1:])"]
+        got = pa.run_program(exe, crate, ["a"], 10, pa.run_env(), runner)
+        self.assertEqual((got["output"], got["exit"]), ("['target/t/debug/01_x', 'a']\n", 0))
+
+    def test_a_missing_runner_is_reported_before_anything_is_built(self):
+        self.config("week06", '[build]\ntarget = "x"\n[target.x]\nrunner = "no-such-emulator-326 -k"\n')
+        with self.assertRaises(pa.RunnerMissing):
+            pa.capture_week("week06", [], [], 1)
+
+    def test_exit_line(self):
+        # week06/.../13_the_panic_handler.rs:16
+        p = program('//! 13 — t\n//!\n//! Run:  cargo run --bin t\n//! Exit: 1 (on purpose)\n'
+                    'fn main() {\n    println!("== a ==");\n}\n')
+        self.assertEqual(p.exit, 1)
+        self.assertEqual(program('//! Run:  cargo run --bin t\nfn main() {}\n').exit, 0)
+
+    def test_a_cross_page_offers_no_editor(self):
+        ctx = pa.Ctx("week06", {}, {})
+        cross = pa.Target("riscv64gc-unknown-none-elf", ["qemu-system-riscv64"])
+        page = pa.render_index("week06", "t", [], [], {}, ctx, {}, cross)
+        self.assertIn("run under <code>qemu-system-riscv64</code>", page)
+        self.assertIn("<kbd>Ctrl</kbd>-<kbd>A</kbd>", page)
+        self.assertNotIn("edit this program and run it", page)
+        host = pa.render_index("week04", "t", [], [], {}, pa.Ctx("week04", {}, {}), {})
+        self.assertIn("edit this program and run it", host)
+
+    def test_serving_a_cross_week_still_offers_no_editor(self):
+        pa.REPO = self.saved
+        if not pa.captures_path("week06").exists():
+            self.skipTest("week06 has no captures")
+        page = pa.build_page("week06", pa.SERVE_BACKLINK, cfg={"runner": "local", "token": "t"})
+        self.assertIn('"runner": "none"', page)
+        self.assertNotIn("<kbd>i</kbd> edit", page)
+        self.assertIn("QEMU emulator version", page)
+
+
 class ServeCliTest(unittest.TestCase):
     def test_serve_is_a_subcommand_of_the_documented_spelling(self):
         with self.assertRaises(SystemExit) as caught:

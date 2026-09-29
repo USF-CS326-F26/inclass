@@ -33,8 +33,15 @@ Usage:
     python3 tools/pointat.py --all --publish ../USF-CS326-F26.github.io
     python3 tools/pointat.py week04 --timeout 10
 
---check fails when: a crate does not build; a program exits non-zero or times
-out; a program's output is missing one of the `== ` headers its source prints,
+A cross-target week is one whose weekNN/examples/.cargo/config.toml sets
+`[build] target` (week06: bare-metal RISC-V).  Its programs are run through
+that target's `runner` (QEMU) the way `cargo run` would run them, its broken
+files are compiled with `--target`, and its page shows the captured output
+only: nothing in a browser could run the programs, so there is no editor.
+
+--check fails when: a crate does not build; a program exits with a status
+other than its `//! Exit: N` line (0 without one) or times out; a program's
+output is missing one of the `== ` headers its source prints,
 or has a `== ` line no header explains; a broken file compiles, or its errors
 lack the code in its file name; a capture contains this checkout's absolute
 path; or a source file changed since it was captured.
@@ -44,8 +51,9 @@ SITE/docs/inclass/weekNN-slides.html from weekNN/slides.html, swapping the
 back-link and the examples links for the site's names.  It refuses to replace
 a published deck that differs from the source in any other way.
 
-Standard library only; Python 3.9 or newer.  Needs cargo and rustc on PATH
-unless --no-run.
+Standard library only; Python 3.9 or newer (3.11 for a cross-target week,
+whose config.toml is read with tomllib).  Needs cargo and rustc on PATH, and a
+cross-target week's runner, unless --no-run.
 """
 
 from __future__ import annotations
@@ -60,6 +68,7 @@ import os
 import platform
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -620,6 +629,7 @@ def find_sites(src: Source, main: Block | None) -> list:
 RUN_RE = re.compile(r"((?:[A-Za-z_]\w*=\S*\s+)*)cargo run\b(.*)$")
 SHELL_OPS = ("|", "||", "&&", ";", "&")
 RAW_WRITE_RE = re.compile(r"\be?print!\s*\(|\bstdout\s*\(|\bstderr\s*\(|\bdbg!\s*\(|\bwrite_all\s*\(")
+EXIT_RE = re.compile(r"//!\s*Exit:\s*(\d+)\b")
 
 
 @dataclass
@@ -638,6 +648,7 @@ class Program:
     ranges: dict        # section -> (first line, last line); may be empty (lo > hi)
     has_raw: bool
     folds: list = field(default_factory=list)   # [(marker line, item's last line)]
+    exit: int = 0       # the status every run should end with (`//! Exit: N`)
 
 
 def parse_runs(doc_lines: list, stem: str) -> list:
@@ -733,9 +744,11 @@ def load_program(path: Path, text: str | None = None) -> Program:
     for s in sites:
         if s.in_main:
             s.section = next((k for k, (lo, hi) in ranges.items() if lo <= s.line <= hi), 0)
+    exits = [int(m.group(1)) for m in map(EXIT_RE.match, src.lines[:doc_end]) if m]
     return Program(stem, path, src, num, title, doc_end, parse_runs(src.lines[:doc_end], stem),
                    main_open, main_close, sites, headers, ranges,
-                   RAW_WRITE_RE.search(src.mask) is not None, find_folds(src))
+                   RAW_WRITE_RE.search(src.mask) is not None, find_folds(src),
+                   exits[-1] if exits else 0)
 
 
 FIX_RE = re.compile(r"FIX(?:\s+\d+)?:\s*")
@@ -807,6 +820,33 @@ def run_env() -> dict:
     return dict(os.environ, NO_COLOR="1", TERM="dumb", RUST_BACKTRACE="0", CARGO_TERM_COLOR="never")
 
 
+@dataclass
+class Target:
+    triple: str
+    runner: list        # argv prefix; the ELF's path is appended, as `cargo run` does
+
+
+class RunnerMissing(Exception):
+    pass
+
+
+def cross_target(week: str) -> Target | None:
+    """The target a week's examples/.cargo/config.toml builds for, and the
+    runner that `cargo run` would hand each program to, or None for a week that
+    builds for this machine.  cargo already honors the file when it builds; this
+    is only so pointat runs and compiles the same way."""
+    cfg = REPO / week / "examples" / ".cargo" / "config.toml"
+    if not cfg.exists():
+        return None
+    import tomllib   # Python 3.11+, and only a cross-target week has this file
+    data = tomllib.loads(cfg.read_text(encoding="utf-8"))
+    triple = (data.get("build") or {}).get("target")
+    if not isinstance(triple, str):
+        return None
+    runner = ((data.get("target") or {}).get(triple) or {}).get("runner") or []
+    return Target(triple, shlex.split(runner) if isinstance(runner, str) else list(runner))
+
+
 def tool_version(argv: list) -> str:
     try:
         return subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -875,11 +915,14 @@ def cargo_build(crate: Path, env: dict) -> tuple:
     return success, diags, exes, p.stderr.decode("utf-8", "replace")
 
 
-def run_program(exe: str, crate: Path, args: list, timeout: float, env: dict) -> dict:
+def run_program(exe: str, crate: Path, args: list, timeout: float, env: dict,
+                runner: list | None = None) -> dict:
     argv0 = os.path.relpath(exe, crate)   # what `cargo run` shows as argv[0]
+    # With a runner, cargo runs `runner… <exe> <args>`, and so does this.
+    argv, executable = ([*runner, argv0, *args], None) if runner else ([argv0, *args], exe)
     t0 = time.monotonic()
     try:
-        p = subprocess.run([argv0, *args], executable=exe, cwd=crate, env=env, timeout=timeout,
+        p = subprocess.run(argv, executable=executable, cwd=crate, env=env, timeout=timeout,
                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            check=False)
         raw, code, timed_out = p.stdout, p.returncode, False
@@ -890,8 +933,9 @@ def run_program(exe: str, crate: Path, args: list, timeout: float, env: dict) ->
             "replacement_chars": out.count("\ufffd"), "_seconds": time.monotonic() - t0}
 
 
-def compile_broken(b: Broken, env: dict) -> dict:
-    cmd = ["rustc", "--edition", "2021", "--emit=metadata", "-o", os.devnull, b.path.name]
+def compile_broken(b: Broken, env: dict, triple: str | None = None) -> dict:
+    target = ["--target", triple] if triple else []
+    cmd = ["rustc", "--edition", "2021", *target, "--emit=metadata", "-o", os.devnull, b.path.name]
     try:
         p = subprocess.run(cmd + ["--error-format=json"], cwd=b.path.parent, env=env, timeout=60,
                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -923,6 +967,10 @@ def sha1(text: str) -> str:
 def capture_week(week: str, programs: list, brokens: list, timeout: float) -> dict:
     crate = REPO / week / "examples"
     env = run_env()
+    cross = cross_target(week)
+    runner = cross.runner if cross else []
+    if runner and shutil.which(runner[0]) is None:
+        raise RunnerMissing(f"{week}: its runner {runner[0]!r} is not on PATH")
     t0 = time.monotonic()
     success, diags, exes, stderr = cargo_build(crate, env)
     nwarn = sum(1 for ds in diags.values() for d in ds if d["level"] == "warning")
@@ -936,6 +984,10 @@ def capture_week(week: str, programs: list, brokens: list, timeout: float) -> di
         "build": {"success": success, "stderr": "" if success else stderr},
         "programs": {}, "broken": {},
     }
+    if cross:
+        cap["target"] = cross.triple
+        if runner:
+            cap["runner"] = (tool_version([runner[0], "--version"]).splitlines() or ["?"])[0]
     for p in programs:
         entry = {"source_sha1": sha1(p.src.text), "diagnostics": diags.get(p.stem, []), "runs": []}
         exe = exes.get(p.stem)
@@ -943,12 +995,12 @@ def capture_week(week: str, programs: list, brokens: list, timeout: float) -> di
             if exe is None:
                 r = {"output": "", "exit": None, "timed_out": False, "replacement_chars": 0, "_seconds": 0}
             else:
-                r = run_program(exe, crate, args, timeout, dict(env, **extra_env))
+                r = run_program(exe, crate, args, timeout, dict(env, **extra_env), runner)
             entry["runs"].append({"cmd": cmd, "args": args, "output": r["output"], "exit": r["exit"],
                                   "timed_out": r["timed_out"], "replacement_chars": r["replacement_chars"]})
         cap["programs"][p.stem] = entry
     for b in brokens:
-        c = compile_broken(b, env)
+        c = compile_broken(b, env, cross.triple if cross else None)
         c["source_sha1"] = sha1(b.src.text)
         cap["broken"][b.stem] = c
     return cap
@@ -1830,7 +1882,7 @@ $css
     <select id="pick" aria-label="choose an example">$options</select>
     <button type="button" class="next" title="next example (n)">&rsaquo;</button>
   </nav>
-  <span class="legend"><kbd>Space</kbd>/<kbd>j</kbd>/<kbd>k</kbd> sections &middot; click to pin &middot; <kbd>n</kbd>/<kbd>p</kbd> example &middot; <kbd>i</kbd> edit &middot; <kbd>l</kbd> copy link</span>
+  <span class="legend">$legend</span>
   <span class="size"><button type="button" data-fs="-2" title="smaller (-)">A&minus;</button><button type="button" data-fs="2" title="larger (+)">A+</button></span>
 </header>
 <main>
@@ -1857,8 +1909,24 @@ SHARE_BASE = "http://cs326-f26.cs.usfca.edu/inclass"
 
 
 def render_index(week: str, topic: str, programs: list, brokens: list, ids: dict, ctx: Ctx,
-                 mapped: dict) -> str:
+                 mapped: dict, cross: Target | None = None) -> str:
     n = week[4:]
+    if cross:
+        tool = os.path.basename(cross.runner[0]) if cross.runner else "its runner"
+        quit_key = (" If one ever hangs, <kbd>Ctrl</kbd>-<kbd>A</kbd> then <kbd>x</kbd> quits QEMU."
+                    if tool.startswith("qemu") else "")
+        run_note = (f"These programs are built for <code>{esc(cross.triple)}</code> and run under "
+                    f"<code>{esc(tool)}</code>, not in a browser, so this page shows the output they "
+                    f"printed there and cannot run them itself. To run one yourself, "
+                    f"<code>cd {esc(week)}/examples</code> and <code>cargo run --bin</code> it.{quit_key}")
+        edit_keys = ""
+    else:
+        run_note = "Press <kbd>i</kbd> on a program to edit it and run it."
+        edit_keys = """
+<tr><td><kbd>i</kbd></td><td>edit this program and run it</td></tr>
+<tr><td><kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>&crarr;</kbd></td><td>run what you have edited</td></tr>
+<tr><td><kbd>c</kbd></td><td>compare: what you changed in the code, and what changed in the
+output (press <kbd>Esc</kbd> first if you are typing)</td></tr>"""
     prog_rows = []
     for p in programs:
         row = ctx.readme.get("Program", {}).get(p.stem) or []
@@ -1881,7 +1949,7 @@ file in <code>examples/broken/</code> beside what <code>rustc</code> said about 
 numbered section of code sits in the same row as the output it produced. Click an output line to light
 up the <code>println!</code> that printed it, or click a <code>println!</code> to find its output.
 Click a section's number to copy a link straight to that section, to paste where students will
-follow it. Press <kbd>i</kbd> on a program to edit it and run it. On a phone the two columns do not fit, so a
+follow it. {run_note} On a phone the two columns do not fit, so a
 <b>Code</b>/<b>Output</b> switch shows one at a time.</p>
 <h2>The programs</h2>
 <table class="list"><thead><tr><th></th><th>Program</th><th>The one idea</th><th>The line to point at</th><th>Sections</th></tr></thead>
@@ -1901,11 +1969,7 @@ follow it. Press <kbd>i</kbd> on a program to edit it and run it. On a phone the
 <tr><td><kbd>n</kbd> <kbd>p</kbd></td><td>next or previous example</td></tr>
 <tr><td><kbd>r</kbd></td><td>next run, for programs run more than once</td></tr>
 <tr><td><kbd>e</kbd></td><td>open or close the explanation (broken files) or the build warnings</td></tr>
-<tr><td><kbd>+</kbd> <kbd>-</kbd></td><td>larger or smaller text (remembered)</td></tr>
-<tr><td><kbd>i</kbd></td><td>edit this program and run it</td></tr>
-<tr><td><kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>&crarr;</kbd></td><td>run what you have edited</td></tr>
-<tr><td><kbd>c</kbd></td><td>compare: what you changed in the code, and what changed in the
-output (press <kbd>Esc</kbd> first if you are typing)</td></tr>
+<tr><td><kbd>+</kbd> <kbd>-</kbd></td><td>larger or smaller text (remembered)</td></tr>{edit_keys}
 <tr><td><kbd>o</kbd></td><td>on a narrow screen, switch between the code and the output column</td></tr>
 </tbody></table>
 </section>"""
@@ -1938,17 +2002,24 @@ def render_page(week: str, programs: list, brokens: list, caps: dict, mapped: di
         f'<option value="{esc(p.stem)}">{esc(p.num)} &middot; {esc(p.stem[len(p.num) + 1:] or p.stem)}</option>'
         for p in programs) + "</optgroup>")
     opts.append(f'<optgroup label="Must not compile ({len(brokens)})">' + "".join(
-        f'<option value="{esc(ids[b.stem])}">{esc(b.code or b.stem)} &middot; {esc(b.stem[6:].replace("_", " "))}</option>'
+        f'<option value="{esc(ids[b.stem])}">{esc(b.code or "error")} &middot; {esc((b.stem[6:] if b.code else b.stem).replace("_", " "))}</option>'
         for b in brokens) + "</optgroup>")
     when = caps.get("captured_at", "")
     try:
         when = datetime.datetime.fromisoformat(when).strftime("%Y-%m-%d %H:%M")
     except ValueError:
         pass
-    footer = (f"Captured {esc(when)} &middot; {esc(caps.get('rustc', '?'))} &middot; {esc(caps.get('os', '?'))}. "
+    under = f" &middot; {esc(caps['runner'])}" if caps.get("runner") else ""
+    footer = (f"Captured {esc(when)} &middot; {esc(caps.get('rustc', '?'))}{under} &middot; {esc(caps.get('os', '?'))}. "
               "Addresses and capacities differ from run to run and machine to machine; that is the point. "
               "Generated by <code>tools/pointat.py</code>.")
     n = week[4:]
+    cross = cross_target(week)
+    # A cross-target week's programs cannot run in the page, whoever serves it.
+    only = {"runner": "none"} if cross else {}
+    legend = ("<kbd>Space</kbd>/<kbd>j</kbd>/<kbd>k</kbd> sections &middot; click to pin &middot; "
+              "<kbd>n</kbd>/<kbd>p</kbd> example &middot; " + ("" if cross else "<kbd>i</kbd> edit &middot; ")
+              + "<kbd>l</kbd> copy link")
     return PAGE.substitute(
         week=week,
         title=esc(f"Code and Output: {topic} — CS 326 Week {n}"),
@@ -1962,12 +2033,13 @@ def render_page(week: str, programs: list, brokens: list, caps: dict, mapped: di
             "captured_rustc": caps.get("rustc", ""), "timeout": 15,
             "share": f"{SHARE_BASE}/{week}-examples.html",
             "palette": [sec_style(k) for k in range(9)],
-            **(cfg or {}),
+            **(cfg or {}), **only,
         }, ensure_ascii=False),
+        legend=legend,
         backlink=backlink,
         bartitle=f"CS 326 &middot; Week {esc(n)} &middot; Code and output",
         options="".join(opts),
-        index=render_index(week, topic, programs, brokens, ids, ctx, mapped),
+        index=render_index(week, topic, programs, brokens, ids, ctx, mapped, cross),
         articles="\n".join(arts),
         footer=footer,
     )
@@ -2013,8 +2085,9 @@ def check_week(week: str, programs: list, brokens: list, caps: dict, mapped: dic
             label = f"{where} ({run['cmd']})"
             if run["timed_out"]:
                 problems.append(f"{label}: timed out")
-            elif run["exit"] != 0:
-                problems.append(f"{label}: exit status {run['exit']}")
+            elif run["exit"] != p.exit:
+                want = f" (its //! Exit: line says {p.exit})" if p.exit else ""
+                problems.append(f"{label}: exit status {run['exit']}{want}")
             if mr.silent:
                 problems.append(f"{label}: headers never printed for sections {mr.silent}")
             for i in mr.unexpected:
@@ -2181,7 +2254,17 @@ def main(argv=None) -> int:
                 continue
             caps = json.loads(path.read_text(encoding="utf-8"))
         else:
-            caps = save_captures(week, capture_week(week, programs, brokens, args.timeout))
+            try:
+                caps = save_captures(week, capture_week(week, programs, brokens, args.timeout))
+            except RunnerMissing as e:
+                # Keep what was captured on a machine that has the runner.
+                path = captures_path(week)
+                if not path.exists():
+                    all_problems.append(f"{e}, and there are no captures to fall back on")
+                    not_written.append(week)
+                    continue
+                all_problems.append(f"{e}; rendering from the committed captures")
+                caps = json.loads(path.read_text(encoding="utf-8"))
         mapped = {}
         for p in programs:
             c = caps["programs"].get(p.stem)

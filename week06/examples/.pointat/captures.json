@@ -1,0 +1,479 @@
+{
+ "tool": "pointat/1",
+ "week": "week06",
+ "captured_at": "2026-09-29T05:36:52-07:00",
+ "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+ "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+ "os": "macOS 26.6.2 arm64",
+ "build": {
+  "success": true,
+  "stderr": ""
+ },
+ "programs": {
+  "01_registers": {
+   "source_sha1": "1231065577c6672c52e26ca6a2953469615f89c0",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 01_registers",
+     "args": [],
+     "output": "== sp: the stack ==\nsp          = 0x800055d0\nstack top   = 0x80005660   (from link.ld)\nin use      = 144 bytes, by the runtime and main\nsp % 16     = 0\n\n== ra: where a ret will go ==\nmain        = 0x8000001e\nra          = 0x800000ee   = main + 0xd0\nthe call wrote ra; the leaf's ret jumped back to it\n\n== zero: writes vanish ==\nli zero, 99 then mv from zero: 0\n\n== ret is jalr zero, 0(ra) ==\nlong_way_back() = 326\nit returned: jalr jumped to ra and threw the link away in zero\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "02_calling_assembly": {
+   "source_sha1": "efc5b649984bd9c259acfe1eb84bd90bcb69448b",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 02_calling_assembly",
+     "args": [],
+     "output": "== found ==\nfind_byte(s, b',') stopped at 6\nfind_byte(s, b'u') stopped at 13\nthe first match wins: s[1] is the 'e' in \"kernel\"\n\n== not there: it stops at the NUL ==\nfind_byte(s, b'z') stopped at 17, and s[17] = 0\nthe 0 is the only way it knows where the bytes end\n\n== what crossed the boundary ==\na0 in:  0x800020a3   the pointer, 8 bytes\na1 in:  0x75         the byte, zero-extended into a register\na0 out: a pointer again, and Rust trusts that it is one\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "03_lb_vs_lbu": {
+   "source_sha1": "7f9f582e50f85659297cec9067c381fbe1e516b1",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 03_lb_vs_lbu",
+     "args": [],
+     "output": "== the same byte, loaded two ways ==\n0x05:  lb 0x0000000000000005 =    5   lbu 0x0000000000000005 =   5\n0x60:  lb 0x0000000000000060 =   96   lbu 0x0000000000000060 =  96\n0xe9:  lb 0xffffffffffffffe9 =  -23   lbu 0x00000000000000e9 = 233\n0xff:  lb 0xffffffffffffffff =   -1   lbu 0x00000000000000ff = 255\n0x05 and 0x60 agree; 0xE9 and 0xFF do not: their top bit is 1\n\n== a length byte, read with the wrong one ==\nlbu says 200 bytes\nlb  says -56 as i64, which is 18446744073709551560 as a usize\nevery byte of 0x80 or more comes out 256 too small\n\n== Rust makes the same choice, by type ==\n0xe9 as u8 -> i8 -> i64 = -23\n0xe9 as u8 -> u64       = 233\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "04_repr_c": {
+   "source_sha1": "87e45e9df39d7495d3ee7ca9e4b04437f103dddf",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 04_repr_c",
+     "args": [],
+     "output": "== span_end reads offsets 0 and 8 ==\nspan_end(&Span { start: 0x80000000, len: 0x1000 }) = 0x80001000\noffset_of!(Span, start) = 0\noffset_of!(Span, len)   = 8\n\n== repr(C) keeps order; the default may not ==\nrepr(C): busy at 0, addr at 8, owner at 16, size 24\ndefault: busy at 10, addr at 0, owner at 8, size 16\nC pads after busy so addr lands on 8; Rust moved busy to the end instead\n\n== insert a field ahead of len ==\noffset_of!(Tagged, len) = 16, but span_end still reads 8\nspan_end = 0x80000007; it added the tag byte and its padding, not len\nthe cast compiled, because a raw-pointer cast checks nothing\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "05_add_wraps": {
+   "source_sha1": "7c0aa6efff996fe9b60de94c62271ab121342828",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 05_add_wraps",
+     "args": [],
+     "output": "== the hardware add ==\nspan_end(start 0xffffffffffffffef, len 0x10) = 0xffffffffffffffff\nspan_end(start 0xffffffffffffffff, len 0x1) = 0x0\nno trap, no flag: the carry out of bit 63 is simply dropped\n\n== Rust, saying what it means ==\nbig.wrapping_add(1) = 0x0\nbig.checked_add(1)  = None\nbig.checked_add(0)  = Some(18446744073709551615)\nbig + 1 would panic here: 'attempt to add with overflow'\n\n== the same bits, signed ==\nspan_end(start i64::MAX, len 1) = 0x8000000000000000 = -9223372036854775808 as i64\none add for both: signed or not is how you read the bits\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "06_prologue_and_s0": {
+   "source_sha1": "c167e92b027a62147c8149e277fb46eb60b06224",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 06_prologue_and_s0",
+     "args": [],
+     "output": "== the frame framed built ==\nmain's sp = 0x80006790\nframe at 0x80006780\n  [sp + 0] saved s0 = 0x80000d6c\n  [sp + 8] saved ra = 0x800000b4   = main + 0x52\n\n== what the saves bought ==\nframed(4, visit) = 44 = visit's 40 + the 4 kept in s0\nvisit ran Rust code with its own frames, and s0 still held 4\n\n== a callee that skips the save ==\nkeeper(polite) -> s1 = 0x5151\nkeeper(rude)   -> s1 = 0x63\nrude returns fine on its own. Only a caller keeping something in s1 notices,\nand it notices later, somewhere else\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "07_a_ret_that_lands_elsewhere": {
+   "source_sha1": "af6a3c9dcf5e5b7fdfcae23a770c8c760c3894f7",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 07_a_ret_that_lands_elsewhere",
+     "args": [],
+     "output": "== two stacks ==\nmain runs with sp = 0x80006540\nthe second stack is 0x800015a0..0x800025a0\n\n== resume: load sp, load ra, ret ==\nResume { sp: 0x800025a0, ra: 0x800000fe = landing }\nlanding: nobody called me, and sp = 0x80002570\nlanding: that is inside the second stack: true\nlanding: main's frame is still there, but nothing points at it\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "08_mmio_clock": {
+   "source_sha1": "e706ffd79902a0d8da2dcdbb1223ece69b79ee15",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 08_mmio_clock",
+     "args": [],
+     "output": "== the counter moves on its own ==\nmtime = 3190\nmtime = 3260   (+70 between two loads)\n\n== .add counts elements, not bytes ==\nMTIMECMP.add(0) = 0x2004000\nMTIMECMP.add(1) = 0x2004008\nMTIMECMP.add(2) = 0x2004010\nMTIMECMP.add(3) = 0x2004018\neach step is size_of::<u64>() = 8 bytes; nothing was dereferenced\n\n== wait_until: poll the counter ==\nasked for 100000 ticks (10 ms), waited 100030\n\n== a second device: the wall clock ==\nRTC = 1790685413011901000 ns since 1970\n    = 2026-09-29 12:36:53 UTC\nlow word first: reading TIME_LOW latches TIME_HIGH, so the two halves match\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "09_volatile_matters": {
+   "source_sha1": "1591c937f37a3e82aa0fa13f57301719de396bdc",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 09_volatile_matters",
+     "args": [],
+     "output": "== two plain stores to the UART ==\nthe UART received: B\nthe first store was dead to the optimizer: the second overwrites it\n\n== two volatile stores ==\nthe UART received: AB\nboth bytes, in order: each volatile store happens, exactly as written\n\n== 100,000 plain loads of mtime ==\ndistinct values seen: 1\nthe load was hoisted out of the loop: the clock was read once\n\n== 100,000 volatile loads ==\ndistinct values seen: 12118\nevery trip around the loop asked the device again\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "10_unsafe_does_not_turn_off": {
+   "source_sha1": "1ce81f3a6d8e5e9902d989230c530e8515fb8c2d",
+   "diagnostics": [
+    {
+     "level": "warning",
+     "code": "unused_unsafe",
+     "message": "unnecessary `unsafe` block",
+     "rendered": "warning: unnecessary `unsafe` block\n  --> src/bin/10_unsafe_does_not_turn_off.rs:67:15\n   |\n67 |     let got = unsafe { table.get(i) };\n   |               ^^^^^^ unnecessary `unsafe` block\n   |\n   = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default\n\n",
+     "spans": [
+      {
+       "ls": 67,
+       "le": 67,
+       "cs": 15,
+       "ce": 21,
+       "primary": true,
+       "label": "unnecessary `unsafe` block"
+      }
+     ]
+    }
+   ],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 10_unsafe_does_not_turn_off",
+     "args": [],
+     "output": "== a safe wrapper ==\nend_of(&s) = 0x80202000   no unsafe at the call site\nthe one unsafe block is inside end_of, where the promise is written\n\n== bounds checks still run ==\ninside unsafe, table.get(7) = None\nrustc even warns that this block is unnecessary: press e to see it\ntable[7] would still panic; get_unchecked(7) is the unsafe way to skip\nthe check, and with 7 it would read past the end: undefined behavior\n\n== a static mut needs unsafe for every touch ==\nBOOTS = 2\nthe compiler cannot see who else touches a global, so each access is yours to justify\n\n== types and borrows still apply ==\nbroken/e0308_unsafe_keeps_types.rs: a u64 is still not a u32 inside unsafe\nbroken/e0133_raw_deref_needs_unsafe.rs: and outside it, *p does not compile at all\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "11_what_core_still_has": {
+   "source_sha1": "308855006593632febd2ba806b9bb1cbd7238184",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 11_what_core_still_has",
+     "args": [],
+     "output": "== slices, iterators, Option ==\nmax       = Some(9)\nposition  = Some(2)\nsum of odd = 27\nfirst > 8 = Some(9)\n10 / 0    = None\n\n== formatting, with no heap ==\nOk(()): \"hart 0 at 0x80000000,  1234 ticks\"\n33 of 48 bytes used\nErr(Error): a full buffer is an error value, not a reallocation\n\n== sizes are compile-time facts ==\nsize_of::<Option<&u8>>() = 8   the null pointer is None\nsize_of::<Option<u8>>()  = 2   a u8 has no spare value\nsize_of::<&[u8]>()       = 16  pointer + length\n\n== what is not here ==\nVec, String and Box live in alloc, which needs an allocator: this program has none\nbroken/e0433_vec_needs_alloc.rs is what rustc says when you reach for one anyway\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "12_who_calls_main": {
+   "source_sha1": "06b3b2e5ed8657a36312634e92fbd66ae29df82e",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 12_who_calls_main",
+     "args": [],
+     "output": "== where this program lives ==\n_entry          0x80000000   the first instruction QEMU ran\n__week06_start  0x800001c4\nmain            0x8000001e\netext           0x80001000   end of code\nend             0x800016a0   end of data\n__stack_top     0x800056a0   16 KiB above end\n\n== who called main ==\nmain's ra = 0x800001d0 = __week06_start + 0xc\nno generated main, no C runtime: a function in this program called it\n\n== after main returns ==\n__week06_start calls week06::exit(0), and the test finisher ends QEMU\nwithout it there is nothing to return to: the CPU would run into whatever is next\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "13_the_panic_handler": {
+   "source_sha1": "ebe4d148fe418ffa4212b271758555ae931f71a0",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 13_the_panic_handler",
+     "args": [],
+     "output": "== an ordinary call ==\nadd_ticks(200, 50) = 250\n\n== one that overflows ==\nadd_ticks(200, 60): 260 does not fit in a u8\n[panic handler] a panic, and this function is all that is left\n[panic handler] at   src/bin/13_the_panic_handler.rs:36\n[panic handler] why  attempt to add with overflow\n",
+     "exit": 1,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  }
+ },
+ "broken": {
+  "e0133_raw_deref_needs_unsafe": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0133_raw_deref_needs_unsafe.rs",
+   "rendered": "error[E0133]: dereference of raw pointer is unsafe and requires unsafe function or block\n  --> e0133_raw_deref_needs_unsafe.rs:19:5\n   |\n19 |     *MTIME\n   |     ^^^^^^ dereference of raw pointer\n   |\n   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0133`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0133",
+     "message": "dereference of raw pointer is unsafe and requires unsafe function or block",
+     "rendered": "error[E0133]: dereference of raw pointer is unsafe and requires unsafe function or block\n  --> e0133_raw_deref_needs_unsafe.rs:19:5\n   |\n19 |     *MTIME\n   |     ^^^^^^ dereference of raw pointer\n   |\n   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior\n\n",
+     "spans": [
+      {
+       "ls": 19,
+       "le": 19,
+       "cs": 5,
+       "ce": 11,
+       "primary": true,
+       "label": "dereference of raw pointer"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0133`.",
+     "rendered": "For more information about this error, try `rustc --explain E0133`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "4ec9df1a7f9f599e43b513f1c5e3c83d48da6fe5"
+  },
+  "e0152_two_panic_handlers": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0152_two_panic_handlers.rs",
+   "rendered": "error[E0152]: found duplicate lang item `panic_impl`\n  --> e0152_two_panic_handlers.rs:21:1\n   |\n21 | / fn also_panic(_: &PanicInfo) -> ! {\n22 | |     halt()\n23 | | }\n   | |_^\n   |\nnote: the lang item is first defined here\n  --> e0152_two_panic_handlers.rs:16:1\n   |\n16 | / fn panic(_: &PanicInfo) -> ! {\n17 | |     halt()\n18 | | }\n   | |_^\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0152`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0152",
+     "message": "found duplicate lang item `panic_impl`",
+     "rendered": "error[E0152]: found duplicate lang item `panic_impl`\n  --> e0152_two_panic_handlers.rs:21:1\n   |\n21 | / fn also_panic(_: &PanicInfo) -> ! {\n22 | |     halt()\n23 | | }\n   | |_^\n   |\nnote: the lang item is first defined here\n  --> e0152_two_panic_handlers.rs:16:1\n   |\n16 | / fn panic(_: &PanicInfo) -> ! {\n17 | |     halt()\n18 | | }\n   | |_^\n\n",
+     "spans": [
+      {
+       "ls": 21,
+       "le": 23,
+       "cs": 1,
+       "ce": 2,
+       "primary": true,
+       "label": ""
+      },
+      {
+       "ls": 16,
+       "le": 18,
+       "cs": 1,
+       "ce": 2,
+       "primary": false,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0152`.",
+     "rendered": "For more information about this error, try `rustc --explain E0152`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "5407574d017862f10182dd9cd38ce6320eafef0a"
+  },
+  "e0308_unsafe_keeps_types": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0308_unsafe_keeps_types.rs",
+   "rendered": "error[E0308]: mismatched types\n  --> e0308_unsafe_keeps_types.rs:32:45\n   |\n32 |     let ticks: u32 = unsafe { read_volatile(MTIME) };\n   |                               ------------- ^^^^^ expected `*const u32`, found `*const u64`\n   |                               |\n   |                               arguments to this function are incorrect\n   |\n   = note: expected raw pointer `*const u32`\n              found raw pointer `*const u64`\nnote: function defined here\n  --> /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ptr/mod.rs:2080:14\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0308",
+     "message": "mismatched types",
+     "rendered": "error[E0308]: mismatched types\n  --> e0308_unsafe_keeps_types.rs:32:45\n   |\n32 |     let ticks: u32 = unsafe { read_volatile(MTIME) };\n   |                               ------------- ^^^^^ expected `*const u32`, found `*const u64`\n   |                               |\n   |                               arguments to this function are incorrect\n   |\n   = note: expected raw pointer `*const u32`\n              found raw pointer `*const u64`\nnote: function defined here\n  --> /rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/core/src/ptr/mod.rs:2080:14\n\n",
+     "spans": [
+      {
+       "ls": 32,
+       "le": 32,
+       "cs": 45,
+       "ce": 50,
+       "primary": true,
+       "label": "expected `*const u32`, found `*const u64`"
+      },
+      {
+       "ls": 32,
+       "le": 32,
+       "cs": 31,
+       "ce": 44,
+       "primary": false,
+       "label": "arguments to this function are incorrect"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0308`.",
+     "rendered": "For more information about this error, try `rustc --explain E0308`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "71162a51f3c022ebfca70e65c58f46c942f75e29"
+  },
+  "e0433_vec_needs_alloc": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0433_vec_needs_alloc.rs",
+   "rendered": "error[E0433]: cannot find type `Vec` in this scope\n  --> e0433_vec_needs_alloc.rs:29:19\n   |\n29 |     let mut log = Vec::new();\n   |                   ^^^ use of undeclared type `Vec`\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0433`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0433",
+     "message": "cannot find type `Vec` in this scope",
+     "rendered": "error[E0433]: cannot find type `Vec` in this scope\n  --> e0433_vec_needs_alloc.rs:29:19\n   |\n29 |     let mut log = Vec::new();\n   |                   ^^^ use of undeclared type `Vec`\n\n",
+     "spans": [
+      {
+       "ls": 29,
+       "le": 29,
+       "cs": 19,
+       "ce": 22,
+       "primary": true,
+       "label": "use of undeclared type `Vec`"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0433`.",
+     "rendered": "For more information about this error, try `rustc --explain E0433`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "b264ee1682e9cb16de1b59859f73b8563f79afa6"
+  },
+  "e0463_forgot_no_std": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0463_forgot_no_std.rs",
+   "rendered": "error[E0463]: can't find crate for `std`\n  |\n  = note: the `riscv64gc-unknown-none-elf` target may not support the standard library\n  = note: `std` is required by `<unknown>` because it does not declare `#![no_std]`\n\nerror: cannot resolve a prelude import\n\nerror: aborting due to 2 previous errors\n\nFor more information about this error, try `rustc --explain E0463`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0463",
+     "message": "can't find crate for `std`",
+     "rendered": "error[E0463]: can't find crate for `std`\n  |\n  = note: the `riscv64gc-unknown-none-elf` target may not support the standard library\n  = note: `std` is required by `<unknown>` because it does not declare `#![no_std]`\n\n",
+     "spans": []
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "cannot resolve a prelude import",
+     "rendered": "error: cannot resolve a prelude import\n\n",
+     "spans": []
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 2 previous errors",
+     "rendered": "error: aborting due to 2 previous errors\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0463`.",
+     "rendered": "For more information about this error, try `rustc --explain E0463`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "744c4f9e18a2afe2177beed7bd9202b015a3e515"
+  },
+  "e0601_forgot_no_main": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null e0601_forgot_no_main.rs",
+   "rendered": "error[E0601]: `main` function not found in crate `e0601_forgot_no_main`\n  --> e0601_forgot_no_main.rs:27:2\n   |\n27 | }\n   |  ^ consider adding a `main` function to `e0601_forgot_no_main.rs`\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0601`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0601",
+     "message": "`main` function not found in crate `e0601_forgot_no_main`",
+     "rendered": "error[E0601]: `main` function not found in crate `e0601_forgot_no_main`\n  --> e0601_forgot_no_main.rs:27:2\n   |\n27 | }\n   |  ^ consider adding a `main` function to `e0601_forgot_no_main.rs`\n\n",
+     "spans": []
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0601`.",
+     "rendered": "For more information about this error, try `rustc --explain E0601`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "26d811b2f3aff3d9559ff8ed161748452183cb0c"
+  },
+  "panic_handler_required": {
+   "cmd": "rustc --edition 2021 --target riscv64gc-unknown-none-elf --emit=metadata -o /dev/null panic_handler_required.rs",
+   "rendered": "error: `#[panic_handler]` function required, but not found\n\nerror: aborting due to 1 previous error\n\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": null,
+     "message": "`#[panic_handler]` function required, but not found",
+     "rendered": "error: `#[panic_handler]` function required, but not found\n\n",
+     "spans": []
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "09840de78e566994a53927b920bb05fb35526ab3"
+  }
+ },
+ "target": "riscv64gc-unknown-none-elf",
+ "runner": "QEMU emulator version 10.2.1"
+}

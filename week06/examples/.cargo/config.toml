@@ -1,0 +1,16 @@
+# The same setup as oslings' asmlab/ and rv6/: a bare-metal RISC-V program that
+# QEMU loads directly, with no firmware underneath it. `cargo run --bin X`
+# builds X for the target and hands the ELF to the runner below.
+#
+# There is no linker setting: the target links with `rust-lld`, which ships
+# with every rustup toolchain. `rustup target add riscv64gc-unknown-none-elf`
+# is the only install (oslings doctor already checks it).
+[build]
+target = "riscv64gc-unknown-none-elf"
+
+[target.riscv64gc-unknown-none-elf]
+rustflags = ["-Clink-arg=-Tlink.ld"]
+
+runner = """
+qemu-system-riscv64 -machine virt -bios none -m 128M -smp 1 -nographic \
+-serial mon:stdio -kernel """

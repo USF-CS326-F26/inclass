@@ -12,7 +12,7 @@ tools/
 ├── pointat.py        the generator (Python 3.9+, standard library only)
 ├── pointat_serve.py  the local runner behind `pointat serve`
 ├── pointat.css       the page's styles, inlined into every examples.html
-├── pointat.js        the page's behaviour: routing, stepping, pinning
+├── pointat.js        the page's behavior: routing, stepping, pinning
 ├── pointat.bands.js  where a program's `== section ==` headers are
 ├── pointat.edit.js   editing, running, and the fresh output pane
 ├── parity-bands.mjs  checks pointat.bands.js against Python's sections
@@ -35,7 +35,8 @@ in `week05/examples/.pointat/captures.json`. Commit both, so the page opens
 for students from a `git pull` with no toolchain.
 
 `--check` exits non-zero if anything looks wrong. That covers a program that
-fails to build, exits non-zero, or times out, and output that is missing a
+fails to build, exits with a status other than the one it declares (0 unless
+its header says `//! Exit: N`), or times out, and output that is missing a
 `== ` header its source prints. It also covers a broken file that compiles, or
 whose errors lack the code in its name. The name check is what catches a new
 rustc changing an error code.
@@ -66,6 +67,9 @@ The page is only as good as these, and every existing program follows them:
   folded to the comment line, the way the `//!` header is. Use it for code
   students should not read by accident, such as an exercise's answer. Put it
   anywhere else and the generator stops with the line number.
+- A program that is supposed to end with a non-zero status says so in its
+  header, after its `Run:` lines: `//! Exit: 1 (why)`. `--check` then holds it
+  to that status instead of 0. Week 6's panic-handler program is the one user.
 - Broken files start with a `//` block of at most 12 lines: the error line,
   a blank `//`, the explanation, a blank `//`, then `// FIX 1:` … lines.
 - The week's `README.md` tables `| Program | The one idea | The line to point at |`
@@ -94,6 +98,33 @@ Lines that `write_all` or `putc` produced are left unlinked, and so is any
 line with two plausible sources. `--dump` shows every decision, including
 the unrendered "inferred" ones.
 
+## Cross-target weeks (QEMU)
+
+A week whose `examples/.cargo/config.toml` sets `[build] target` is built for
+that target, and pointat follows the same file cargo does. Week 6 is one:
+bare-metal RISC-V, `riscv64gc-unknown-none-elf`, with QEMU as the runner.
+
+- **Running.** Each program is run as `cargo run` would run it: the target's
+  `runner` (`qemu-system-riscv64 … -kernel`), then the ELF, then the program's
+  arguments. The program prints over the UART and ends QEMU through the test
+  finisher, so its exit status is QEMU's.
+- **Broken files** are compiled with `--target` as well, and `show-errors.sh`
+  must pass the same flag.
+- **The page is captured output only.** No Playground and no local runner can
+  boot a RISC-V board, so the page has no **Edit and run**, no `i` or `c` keys,
+  and its lede says how to run a program by hand. `pointat serve` shows it the
+  same way. The footer names the QEMU version beside rustc's, and
+  `captures.json` records it as `runner`.
+- **Without the runner**, pointat logs the problem and renders from the
+  committed `captures.json` rather than overwriting it, so `--all` on a
+  machine without QEMU is safe.
+- **Sections work as usual** because the programs call a `println!` macro that
+  their own `src/lib.rs` exports: the mapping only looks at the macro's name.
+  `main` must still be a plain `fn main()`, which `week06::entry!(main)` calls.
+
+Reading `config.toml` needs `tomllib`, so a cross-target week needs Python
+3.11; the other weeks still run on 3.9.
+
 ## Publishing to the course site
 
 ```bash
@@ -117,7 +148,8 @@ python3 tools/pointat.py week04 --no-run --publish ../USF-CS326-F26.github.io --
 
 ## Editing and running in the page
 
-Press <kbd>i</kbd> (or the **Edit and run** button) on any program. The captured
+Press <kbd>i</kbd> (or the **Edit and run** button) on any program of a host
+week. (A cross-target week has no editor; see above.) The captured
 grid is replaced by an editor on the left and a fresh output pane on the right.
 Change a line, press <kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd>, and
 the program is compiled and run for real.
@@ -145,7 +177,7 @@ the program is compiled and run for real.
 - Leaving the program and coming back shows the committed page again, with a
   line offering the unsaved edit. So a deck link never lands on somebody's
   half-finished experiment by surprise.
-- A fresh run is always labelled with the runner and the compiler that
+- A fresh run is always labeled with the runner and the compiler that
   produced it, so it cannot be mistaken for the capture.
 
 Where it runs depends on how the page was opened:
@@ -196,7 +228,7 @@ are. That lives in `tools/pointat.bands.js`, and it must agree with Python's
 real lexer:
 
 ```bash
-node tools/parity-bands.mjs          # 36 programs, 38 runs, 0 disagreements
+node tools/parity-bands.mjs          # 60 programs, 62 runs, 0 disagreements
 ```
 
 Run it after touching either the scanner or the mapping in `pointat.py`. It

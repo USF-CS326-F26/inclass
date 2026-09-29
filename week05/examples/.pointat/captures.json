@@ -1,0 +1,468 @@
+{
+ "tool": "pointat/1",
+ "week": "week05",
+ "captured_at": "2026-09-29T05:42:22-07:00",
+ "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+ "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+ "os": "macOS 26.6.2 arm64",
+ "build": {
+  "success": true,
+  "stderr": ""
+ },
+ "programs": {
+  "01_fd_numbers": {
+   "source_sha1": "09f0a95fbf6281e0d04d0f27a5921d5c5c849532",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 01_fd_numbers",
+     "args": [],
+     "output": "== three are open before main runs ==\nstdin  is fd 0\nstdout is fd 1\nstderr is fd 2\nnobody in this program opened them. They came with the process.\n\n== open spends the lowest free slot ==\nopen(\"/dev/null\") -> 3\nopen(\"/dev/null\") -> 4\nopen(\"/dev/null\") -> 5\nthe same file three times, three different slots\n\n== close refunds the slot, and the next open takes it ==\nclose(4)\nopen(\"/dev/null\") -> 4\n4 again, not 6: the slot close gave back is the lowest free one\n\n== a leak: slots nobody refunds ==\nopened 10 more without closing any; the last one is fd 15\non rv6 that is all 16 slots. The next open fails, although /dev/null\nis right there. Nothing failed where the close was forgotten.\nclose those 10, then open(\"/dev/null\") -> 6\n\n== the number says nothing about what is behind it ==\nread(fd 3, 64 bytes)  -> Ok(0)   /dev/null is always at its end\nwrite(fd 7, 13 bytes) -> Ok(13)   and swallows every write whole\na file, a terminal, a pipe, /dev/null: all of them are read(fd, buf).\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "02_short_reads": {
+   "source_sha1": "dee1499807a182e5085b2ae9f88d6783af0e2c42",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 02_short_reads",
+     "args": [],
+     "output": "== three reads, two lines ==\nread -> 6   buf[..6] is \"hello\\n\"\nread -> 3   buf[..3] is \"ok\\n\"\nread -> 0   buf[..0] is \"\"\n6 and 3 are both short of 512, and neither one is the end. 0 is.\n\n== the bytes past n are left over ==\nbuf[..3]  is \"ok\\n\"       the second read\nbuf[3..6] is \"lo\\n\"       the first read's tail: nothing cleared it\nbuf[..6]  is \"ok\\nlo\\n\"   what a reader that ignores n passes on\n`lo` was never typed on the second line. Only n says which bytes are real.\n\n== the mistake: treat a short read as the end ==\nread -> 6   got \"hello\\n\"\n1 read, then it quit. `ok` was typed and never read.\n\n== a buffer smaller than the line ==\nread -> 4   small[..4] is \"hell\"\nread -> 2   small[..2] is \"o\\n\"\nread -> 3   small[..3] is \"ok\\n\"\nread -> 0   small[..0] is \"\"\nthe terminal kept `o\\n` for the next read. A full buffer is not a line either.\n\n== a file ends with a short read too ==\nread -> 512\nread -> 512\nread -> 76\nread -> 0\n1100 bytes. The read that got the last 76 said 76, not 0.\nOnly the read after it, the one that returned 0, said the file was over.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "03_buffer_size_counts_calls": {
+   "source_sha1": "9b61e9e648ee144774d5f258b7e11d2e1e12bf16",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 03_buffer_size_counts_calls",
+     "args": [],
+     "output": "== 1 MiB through three buffers ==\n    1-byte buffer  1,048,576 reads, then the 0: 1,048,577 calls\n  512-byte buffer      2,048 reads, then the 0: 2,049 calls\n 4096-byte buffer        256 reads, then the 0: 257 calls\n512 bytes is 0.2% of the calls a 1-byte buffer makes\n\n== the first factor of 512 is nearly all of it ==\n     1 -> 512   saves 1,046,528 calls\n   512 -> 4096  saves 1,792 calls\n  4096 -> 65536 saves 240 calls   (16 left)\n512 to 64 KiB removes 2,032 of the last 2,048 calls, at 128 times the memory\n\n== what the buffer costs: one 4 KiB stack page ==\n  512 bytes =  12.5% of the stack   fits, with room for everything else\n 1024 bytes =  25.0% of the stack   fits, with room for everything else\n 4096 bytes = 100.0% of the stack   the whole page: nothing left for any other local\n 8192 bytes = 200.0% of the stack   does not fit: sp runs off the page\nthat is why cat and wc use 512 bytes and grep uses 1,024.\n\n== on rv6: a kernel that returns at most 128 bytes ==\n  512-byte buffer      8,192 reads\n 4096-byte buffer      8,192 reads\npast 128 the count stops falling: the kernel, not the buffer, sets it.\nthe loop is the same on both. Only the number of trips changes.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "04_read_loop_tr": {
+   "source_sha1": "135720e7abef56d8f700da00696a8752c4cf606a",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 04_read_loop_tr",
+     "args": [],
+     "output": "== the input: 30 bytes in a file on fd 3 ==\ninput = \"mount /\\nstart the shell\\nready\\n\"\nthe buffer is 16 bytes. read hands back at most 8; write takes at most 5.\n\n== the loop, on the stingy kernel ==\nupcase(..) = Ok(30)\nread  returned [8, 8, 8, 6, 0]\nwrite returned [5, 3, 5, 3, 5, 3, 5, 1]\nfd 1 got \"MOUNT /\\nSTART THE SHELL\\nREADY\\n\"\n8 bytes in, then write took 5 and write_all went back for the 3.\n\n== the same loop, on a generous host ==\nupcase(..) = Ok(30)\nread  returned [16, 14, 0]\nwrite returned [16, 14]\nsame output: true. The kernel chose the calls; the loop chose nothing.\n\n== bare write: every call says how many, and nobody listens ==\nupcase_bare(..) = Ok(30)\nwrite returned [5, 5, 5, 5]\nfd 1 got \"MOUNTSTARTE SHEREADY\"\n20 of 30 bytes arrived, and the function still said Ok.\non the host every write is taken whole, so every test of this passes.\n\n== a write that takes 0 is an error, not a loop ==\nupcase(..) = Err(Error(-1))\nread  returned [8]\nwrite returned [0]\nwithout the `n == 0` check, write_all would ask again forever.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "05_exit_status": {
+   "source_sha1": "38b24c0d7f0cb5ce152785a88afc4f931359c2f5",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 05_exit_status",
+     "args": [],
+     "output": "== gives up at the first failure ==\n  fd 2 | cat: gone.txt: No such file or directory\n  $? = 1\nthe status is right, and todo.txt was never printed.\n\n== lets the last file decide ==\n  fd 2 | cat: gone.txt: No such file or directory\n  fd 1 | buy milk\n  $? = 0\nboth lines are right, and the 0 is a lie: a file was missing.\n\n== remembers any failure ==\n  fd 2 | cat: gone.txt: No such file or directory\n  fd 1 | buy milk\n  $? = 1\nthe transcript, exactly. The 1 describes the run, not the last file.\n\n== why the complaint goes to fd 2 ==\n$ cat gone.txt todo.txt > both\n  the screen gets fd 2: [\"cat: gone.txt: No such file or directory\"]\n  the file `both` gets fd 1: [\"buy milk\"]\nthe redirect moved fd 1 only, so `both` holds data and nothing else.\n\n== the shell reads the status ==\n  grep -q ERROR log -> 0 (some line matched): `&& echo read the log` runs\n  grep -q ERROR log -> 1 (nothing matched): `&& echo read the log` is skipped\n  grep -q ERROR log -> 2 (a file would not open): `&& echo read the log` is skipped\ngrep's 1 is the answer `no`, not a failure. A grep that always said 0\nwould make every `if grep ..` take the same branch.\n\n== one byte ==\n  exit(  1) -> $? = 1\n  exit(  3) -> $? = 3\n  exit(255) -> $? = 255\n  exit(256) -> $? = 0\n  exit(257) -> $? = 1\nthe status reaches the shell as one byte. Return the number of failed files\nand the 256th failure reads as success. cat says 1 for any failure.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "06_bytes_chars_str": {
+   "source_sha1": "8f071dbb3312f4dd177b0798c6914107b5746fcf",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 06_bytes_chars_str",
+     "args": [],
+     "output": "== one char, two bytes ==\n'ñ'.len_utf8()         = 2   one char, two bytes\n\"año\".len()            = 4   len counts bytes\n\"año\".chars().count()  = 3   chars decodes them first\nsize_of::<char>()      = 4   a char is not a byte\nsize_of::<&str>()      = 16  and a &str is a pointer and a length,\nsize_of::<&[u8]>()     = 16  exactly like a &[u8]. Only the promise differs.\n\n== the bytes of a file holding año and a newline ==\n  61  01100001  ASCII\n  C3  11000011  part of a longer char\n  B1  10110001  part of a longer char\n  6F  01101111  ASCII\n  0A  00001010  ASCII\n5 bytes for 3 letters and a newline. `wc` reports 5.\n\n== one to four bytes ==\n  a  1 byte(s)  01100001\n  ñ  2 byte(s)  11000011 10110001\n  €  3 byte(s)  11100010 10000010 10101100\n  🦀  4 byte(s)  11110000 10011111 10100110 10000000\na first byte of 0xxxxxxx is ASCII; 110, 1110 and 11110 say 2, 3 and 4 bytes.\nevery byte after the first starts 10.\n\n== a search for b'\\n' cannot land inside a character ==\nb'\\n' at [4, 10]\nbytes >= 0x80 at [1, 2, 7, 8]   the two ñ, two bytes each\n0x0A has its top bit clear, and no byte of ñ does. They never collide.\n\n== b\"-n\" is bytes; \"-n\" is a str ==\nb\"-n\"                  = [45, 110]   a &[u8; 2]\narg == b\"-n\"           -> true\narg == \"-n\".as_bytes() -> true   the same two bytes, reached from a str\nb'a' = 97, 'a' as u8 = 97, 97u8 as char = 'a'\na u8 and a char never compare directly. RUN  ./show-errors.sh e0308\n\n== matches! tests a byte against several patterns ==\n  rv6 boots\n  ..d..vv..   v = a vowel, d = a digit\nmatches!(0xC3, b'a'..=b'z') = false   ñ's bytes are not letters to a byte test\n\n== when you really want characters, you pay for a check ==\nfrom_utf8(&\"año\".as_bytes()[..2]) = Err(Utf8Error { valid_up_to: 1, error_len: None })\nfrom_utf8_lossy of the same bytes   = \"a�\"\na read that ends between C3 and B1 hands you exactly that.\nwc -m, which counts characters, has to decode every byte to answer.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 1
+    }
+   ]
+  },
+  "07_state_across_chunks": {
+   "source_sha1": "cbc08052fcc9b0e280b8cff8e3ec77af4b6030e2",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 07_state_across_chunks",
+     "args": [],
+     "output": "== one feed of the whole input ==\nfeed(\"one\\r\\ntwo\\r\\n\") -> pairs = 2\n\n== the same bytes in two chunks, state carried ==\nafter \"one\\r\"        after_cr = true   pairs = 0\nafter \"\\ntwo\\r\\n\"    after_cr = false  pairs = 2\n2, the same as one feed. One row per chunk, each starting from the row above.\n\n== the same chunks, state forgotten ==\nafter \"one\\r\"        pairs = 0\nafter \"\\ntwo\\r\\n\"    pairs = 1\n1. The \\n that opens chunk 2 met a fresh `false`, and that pair vanished.\n\n== every place a read could end ==\n  split at  0:               \"\" | \"one\\r\\ntwo\\r\\n\"  carried 2  forgetful 2\n  split at  1:              \"o\" | \"ne\\r\\ntwo\\r\\n\"   carried 2  forgetful 2\n  split at  2:             \"on\" | \"e\\r\\ntwo\\r\\n\"    carried 2  forgetful 2\n  split at  3:            \"one\" | \"\\r\\ntwo\\r\\n\"     carried 2  forgetful 2\n  split at  4:          \"one\\r\" | \"\\ntwo\\r\\n\"       carried 2  forgetful 1   <- wrong\n  split at  5:        \"one\\r\\n\" | \"two\\r\\n\"         carried 2  forgetful 2\n  split at  6:       \"one\\r\\nt\" | \"wo\\r\\n\"          carried 2  forgetful 2\n  split at  7:      \"one\\r\\ntw\" | \"o\\r\\n\"           carried 2  forgetful 2\n  split at  8:     \"one\\r\\ntwo\" | \"\\r\\n\"            carried 2  forgetful 2\n  split at  9:   \"one\\r\\ntwo\\r\" | \"\\n\"              carried 2  forgetful 1   <- wrong\n  split at 10: \"one\\r\\ntwo\\r\\n\" | \"\"                carried 2  forgetful 2\nthe carried count is 2 at every split. The forgetful one is wrong only where\na read ends between \\r and \\n, and the kernel, not the program, picks that.\n\n== what the state costs ==\nsize_of::<bool>() + size_of::<usize>() = 9 bytes, for a line or a terabyte\nthat is O(1) state: the same variables whatever the input's length.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "08_lines_in_a_fixed_buffer": {
+   "source_sha1": "bb5a624f2f183922bb2fa6375d2eb71008a15ea0",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 08_lines_in_a_fixed_buffer",
+     "args": [],
+     "output": "== the input, and a 16-byte buffer ==\n\"abc\\ndef\\nghijklmn\\nopqrstuvw\\nxyz\"   30 bytes, five lines, the last with no \\n\nthe kernel hands it over in reads of 14, then 10, then whatever is left.\n\n== abc and def: one read, two lines ==\nrefill   read(fd, &mut buf[0..]) -> 14\n         [a b c \\n d e f \\n g h i j k l . .]   len 14\nreturn   \"abc\"                                 start 4\nreturn   \"def\"                                 start 8\nthe second call made no read. Its \\n was already in the buffer.\n\n== ghijklmn: the tail moves to the front, the read goes behind it ==\nbefore   [a b c \\n d e f \\n g h i j k l . .]   start 8, len 14\ncompact  [g h i j k l . . . . . . . . . .]   start 0, len 6\nrefill   read(fd, &mut buf[6..]) -> 10\n         [g h i j k l m n \\n o p q r s t u]   len 16\nreturn   \"ghijklmn\"                            start 9\n`ghijkl` came in one read and `mn` in the next. The caller sees one line.\n\n== the rest, and a last line with no \\n ==\nbefore   [g h i j k l m n \\n o p q r s t u]   start 9, len 16\ncompact  [o p q r s t u . . . . . . . . .]   start 0, len 7\nrefill   read(fd, &mut buf[7..]) -> 6\n         [o p q r s t u v w \\n x y z . . .]   len 13\nreturn   \"opqrstuvw\"                           start 10\nbefore   [o p q r s t u v w \\n x y z . . .]   start 10, len 13\ncompact  [x y z . . . . . . . . . . . . .]   start 0, len 3\nrefill   read(fd, &mut buf[3..]) -> 0\nreturn   \"xyz\"                                 no \\n, and still a line\nreturn   None\nthe read that returned 0 did not end the lines. The call after the last one did.\n\n== what it cost ==\n4 reads for 30 bytes, through 16 bytes of storage.\neach line was a slice of that one array. Nothing was copied out, and nothing grew.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "09_while_let": {
+   "source_sha1": "9e915a4504ac93ecf3719e3a5e3f9d74dc73cf2e",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 09_while_let",
+     "args": [],
+     "output": "== pop until None ==\n  top = 30\n  top = 20\n  top = 10\npop() answered None, so the loop ended. stack = []\n\n== the same loop, spelled out ==\n  top = \"grep\"\n  top = \"sh\"\n  top = \"init\"\none call, one pattern, per turn. The first value that fails it ends the loop.\n\n== any pattern will do, not just Some ==\n  first = 'r', 2 byte(s) after it\n  first = 'v', 1 byte(s) after it\n  first = '6', 0 byte(s) after it\n`[first, tail @ ..]` fails on an empty slice, and that ended the loop.\n\n== a line source, driven by hand ==\n  \"ls\"     2 byte(s)\n  \"cd /\"   4 byte(s)\n  \"\"       0 byte(s)\n  \"exit\"   4 byte(s)\n5 calls for 4 lines: the last call is the None that ended the loop.\nthe empty line came back as Some(\"\"). Empty is a line; None is the end.\n\n== leaving early: break ==\n  header \"Host: rv6\"\n  header \"Accept: */*\"\n3 calls, and the body was never asked for.\n`break` and `return` leave a `while let` like any other loop.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "10_fenceposts": {
+   "source_sha1": "8d2fb7fc1bc1316cf4038007ff43b4a58569c805",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 10_fenceposts",
+     "args": [],
+     "output": "== two ranges ==\n(1..5)  = [1, 2, 3, 4]      stops before 5\n(1..=5) = [1, 2, 3, 4, 5]   up to and including 5\n\n== where a 2-byte needle can start in a 5-byte line ==\n  h e a r t\n  ^ ^         start 0\n    ^ ^       start 1\n      ^ ^     start 2\n        ^ ^   start 3\n0..=(5 - 2) is 4 starts. 0..(5 - 2) is 3, and never tries start 3.\n\n== contiguous: ear is in heart, not in era ==\n\"heart\".contains(\"ear\") = true\n\"heart\".find(\"ear\")     = Some(1)   it starts at 1\n\"era\".contains(\"ear\")   = false   all three letters, not in one run\n\n== the last start is the one people skip ==\n\"syslog\".find(\"log\") = Some(3)\nlast start = 6 - 3 = 3\n(0..3).contains(&3)  = false   so a scan over 0..3 misses `log`\n(0..=3).contains(&3) = true\n`logfile` matches either way. Only lines that END in the needle go missing.\n\n== two sizes to decide before counting ==\n\"heart\".contains(\"\")   = true    an empty needle is found in every line\n\"\".contains(\"\")        = true    even in an empty one\n\"he\".contains(\"heart\") = false   longer than the line: no start at all\nits last start would be 2 - 5, and a usize cannot hold -3:\n  5usize.checked_sub(2) = Some(3)\n  2usize.checked_sub(5) = None\n  2usize.saturating_sub(5) = 0   not a fix: 0..=0 would still try start 0\n\n== what 2 - 5 does on usize, in a debug build ==\n  panicked: attempt to subtract with overflow\ncatch_unwind(|| 2 - 5) = Err: it panicked\na release build wraps to a number near 2^64 instead, and the first index\nthat uses it panics anyway. On rv6 either one prints the single word panic.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  },
+  "11_stop_early": {
+   "source_sha1": "aae630487644e5c6d1e6a78e880b52e82b7af98d",
+   "diagnostics": [],
+   "runs": [
+    {
+     "cmd": "cargo run --bin 11_stop_early",
+     "args": [],
+     "output": "== a 10 GB log, made up on demand ==\nsize  10,000,000,000 bytes\nlines 500,000,000 of 20 bytes each\nread so far: 0 bytes, in 0 reads\n\n== the first line: one read ==\nread -> 1024\nfirst line: \"line 0000000001 ok.\"\nread so far: 1,024 bytes, in 1 read\nthe same read holds lines 2 through 51 whole, so they would cost no more.\nthat is 0.0000102% of the file. The other 9,999,998,976 bytes were never made.\n\n== what reading to the end would cost ==\n9,765,625 reads of 1,024 bytes, then one more that returns 0\na program that reads everything and prints only the first line gives the\nsame output as the one above, and pays for all 9,765,625 of them.\n\n== a source that never ends ==\nyes: read -> 1024, first line \"y\"\nafter 1001 reads, has read ever said 0? false\n`yes | head -n 1` finishes only because head stops asking.\na reader that waits for 0 here waits forever.\n",
+     "exit": 0,
+     "timed_out": false,
+     "replacement_chars": 0
+    }
+   ]
+  }
+ },
+ "broken": {
+  "e0277_lines_is_not_an_iterator": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0277_lines_is_not_an_iterator.rs",
+   "rendered": "error[E0277]: `Lines<'_>` is not an iterator\n  --> e0277_lines_is_not_an_iterator.rs:29:17\n   |\n29 |     for line in lines {\n   |                 ^^^^^ `Lines<'_>` is not an iterator\n   |\nhelp: the trait `Iterator` is not implemented for `Lines<'_>`\n  --> e0277_lines_is_not_an_iterator.rs:12:1\n   |\n12 | struct Lines<'b> {\n   | ^^^^^^^^^^^^^^^^\n   = note: required for `Lines<'_>` to implement `IntoIterator`\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0277`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0277",
+     "message": "`Lines<'_>` is not an iterator",
+     "rendered": "error[E0277]: `Lines<'_>` is not an iterator\n  --> e0277_lines_is_not_an_iterator.rs:29:17\n   |\n29 |     for line in lines {\n   |                 ^^^^^ `Lines<'_>` is not an iterator\n   |\nhelp: the trait `Iterator` is not implemented for `Lines<'_>`\n  --> e0277_lines_is_not_an_iterator.rs:12:1\n   |\n12 | struct Lines<'b> {\n   | ^^^^^^^^^^^^^^^^\n   = note: required for `Lines<'_>` to implement `IntoIterator`\n\n",
+     "spans": [
+      {
+       "ls": 29,
+       "le": 29,
+       "cs": 17,
+       "ce": 22,
+       "primary": true,
+       "label": "`Lines<'_>` is not an iterator"
+      },
+      {
+       "ls": 12,
+       "le": 12,
+       "cs": 1,
+       "ce": 17,
+       "primary": false,
+       "label": ""
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0277`.",
+     "rendered": "For more information about this error, try `rustc --explain E0277`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "b77fbeba87f7969a4c17752919480f0152ab3a62"
+  },
+  "e0308_byte_is_not_a_char": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0308_byte_is_not_a_char.rs",
+   "rendered": "error[E0308]: mismatched types\n  --> e0308_byte_is_not_a_char.rs:14:17\n   |\n14 |         if b == '\\t' {\n   |            -    ^^^^ expected `u8`, found `char`\n   |            |\n   |            expected because this is `u8`\n   |\nhelp: if you meant to write a byte literal, prefix with `b`\n   |\n14 |         if b == b'\\t' {\n   |                 +\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0308`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0308",
+     "message": "mismatched types",
+     "rendered": "error[E0308]: mismatched types\n  --> e0308_byte_is_not_a_char.rs:14:17\n   |\n14 |         if b == '\\t' {\n   |            -    ^^^^ expected `u8`, found `char`\n   |            |\n   |            expected because this is `u8`\n   |\nhelp: if you meant to write a byte literal, prefix with `b`\n   |\n14 |         if b == b'\\t' {\n   |                 +\n\n",
+     "spans": [
+      {
+       "ls": 14,
+       "le": 14,
+       "cs": 17,
+       "ce": 21,
+       "primary": true,
+       "label": "expected `u8`, found `char`"
+      },
+      {
+       "ls": 14,
+       "le": 14,
+       "cs": 12,
+       "ce": 13,
+       "primary": false,
+       "label": "expected because this is `u8`"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0308`.",
+     "rendered": "For more information about this error, try `rustc --explain E0308`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "08f2b2cc11cba16530cf7c27c6fdc97d112da1ec"
+  },
+  "e0499_line_held_across_next_line": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0499_line_held_across_next_line.rs",
+   "rendered": "error[E0499]: cannot borrow `lines` as mutable more than once at a time\n  --> e0499_line_held_across_next_line.rs:30:18\n   |\n29 |     let first = lines.next_line();\n   |                 ----- first mutable borrow occurs here\n30 |     let second = lines.next_line();\n   |                  ^^^^^ second mutable borrow occurs here\n31 |     println!(\"{first:?} then {second:?}\");\n   |                ----- first borrow later used here\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0499`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0499",
+     "message": "cannot borrow `lines` as mutable more than once at a time",
+     "rendered": "error[E0499]: cannot borrow `lines` as mutable more than once at a time\n  --> e0499_line_held_across_next_line.rs:30:18\n   |\n29 |     let first = lines.next_line();\n   |                 ----- first mutable borrow occurs here\n30 |     let second = lines.next_line();\n   |                  ^^^^^ second mutable borrow occurs here\n31 |     println!(\"{first:?} then {second:?}\");\n   |                ----- first borrow later used here\n\n",
+     "spans": [
+      {
+       "ls": 29,
+       "le": 29,
+       "cs": 17,
+       "ce": 22,
+       "primary": false,
+       "label": "first mutable borrow occurs here"
+      },
+      {
+       "ls": 30,
+       "le": 30,
+       "cs": 18,
+       "ce": 23,
+       "primary": true,
+       "label": "second mutable borrow occurs here"
+      },
+      {
+       "ls": 31,
+       "le": 31,
+       "cs": 16,
+       "ce": 21,
+       "primary": false,
+       "label": "first borrow later used here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0499`.",
+     "rendered": "For more information about this error, try `rustc --explain E0499`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "b6478695c821b72812edc7ea7c65435f7679caad"
+  },
+  "e0502_read_buf_while_lines_has_it": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0502_read_buf_while_lines_has_it.rs",
+   "rendered": "error[E0502]: cannot borrow `buf[_]` as immutable because it is also borrowed as mutable\n  --> e0502_read_buf_while_lines_has_it.rs:34:30\n   |\n32 |     let mut lines = Lines::new(&mut buf);\n   |                                -------- mutable borrow occurs here\n33 |     let first = lines.next_line().map(|l| l.len());\n34 |     println!(\"buf[0] is {}\", buf[0]);\n   |                              ^^^^^^ immutable borrow occurs here\n35 |     let second = lines.next_line().map(|l| l.len());\n   |                  ----- mutable borrow later used here\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0502`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0502",
+     "message": "cannot borrow `buf[_]` as immutable because it is also borrowed as mutable",
+     "rendered": "error[E0502]: cannot borrow `buf[_]` as immutable because it is also borrowed as mutable\n  --> e0502_read_buf_while_lines_has_it.rs:34:30\n   |\n32 |     let mut lines = Lines::new(&mut buf);\n   |                                -------- mutable borrow occurs here\n33 |     let first = lines.next_line().map(|l| l.len());\n34 |     println!(\"buf[0] is {}\", buf[0]);\n   |                              ^^^^^^ immutable borrow occurs here\n35 |     let second = lines.next_line().map(|l| l.len());\n   |                  ----- mutable borrow later used here\n\n",
+     "spans": [
+      {
+       "ls": 34,
+       "le": 34,
+       "cs": 30,
+       "ce": 36,
+       "primary": true,
+       "label": "immutable borrow occurs here"
+      },
+      {
+       "ls": 32,
+       "le": 32,
+       "cs": 32,
+       "ce": 40,
+       "primary": false,
+       "label": "mutable borrow occurs here"
+      },
+      {
+       "ls": 35,
+       "le": 35,
+       "cs": 18,
+       "ce": 23,
+       "primary": false,
+       "label": "mutable borrow later used here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0502`.",
+     "rendered": "For more information about this error, try `rustc --explain E0502`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "380f5b0f3b2547ad13d9c5e5d31e8fb2b1ec6d9e"
+  },
+  "e0506_write_buf_while_lines_has_it": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0506_write_buf_while_lines_has_it.rs",
+   "rendered": "error[E0506]: cannot assign to `buf[_]` because it is borrowed\n  --> e0506_write_buf_while_lines_has_it.rs:34:5\n   |\n32 |     let mut lines = Lines::new(&mut buf);\n   |                                -------- `buf[_]` is borrowed here\n33 |     let first = lines.next_line().map(|l| l.len());\n34 |     buf[5] = b'S';\n   |     ^^^^^^^^^^^^^ `buf[_]` is assigned to here but it was already borrowed\n35 |     let second = lines.next_line().map(|l| l.len());\n   |                  ----- borrow later used here\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0506`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0506",
+     "message": "cannot assign to `buf[_]` because it is borrowed",
+     "rendered": "error[E0506]: cannot assign to `buf[_]` because it is borrowed\n  --> e0506_write_buf_while_lines_has_it.rs:34:5\n   |\n32 |     let mut lines = Lines::new(&mut buf);\n   |                                -------- `buf[_]` is borrowed here\n33 |     let first = lines.next_line().map(|l| l.len());\n34 |     buf[5] = b'S';\n   |     ^^^^^^^^^^^^^ `buf[_]` is assigned to here but it was already borrowed\n35 |     let second = lines.next_line().map(|l| l.len());\n   |                  ----- borrow later used here\n\n",
+     "spans": [
+      {
+       "ls": 32,
+       "le": 32,
+       "cs": 32,
+       "ce": 40,
+       "primary": false,
+       "label": "`buf[_]` is borrowed here"
+      },
+      {
+       "ls": 34,
+       "le": 34,
+       "cs": 5,
+       "ce": 18,
+       "primary": true,
+       "label": "`buf[_]` is assigned to here but it was already borrowed"
+      },
+      {
+       "ls": 35,
+       "le": 35,
+       "cs": 18,
+       "ce": 23,
+       "primary": false,
+       "label": "borrow later used here"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0506`.",
+     "rendered": "For more information about this error, try `rustc --explain E0506`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "b5aa264d3c805f24b5e247c9cbf719c622304df5"
+  },
+  "e0599_chars_on_bytes": {
+   "cmd": "rustc --edition 2021 --emit=metadata -o /dev/null e0599_chars_on_bytes.rs",
+   "rendered": "error[E0599]: no method named `chars` found for reference `&[u8]` in the current scope\n  --> e0599_chars_on_bytes.rs:13:10\n   |\n13 |     line.chars().next().is_some_and(|c| c.is_uppercase())\n   |          ^^^^^ method not found in `&[u8]`\n\nerror: aborting due to 1 previous error\n\nFor more information about this error, try `rustc --explain E0599`.\n",
+   "diagnostics": [
+    {
+     "level": "error",
+     "code": "E0599",
+     "message": "no method named `chars` found for reference `&[u8]` in the current scope",
+     "rendered": "error[E0599]: no method named `chars` found for reference `&[u8]` in the current scope\n  --> e0599_chars_on_bytes.rs:13:10\n   |\n13 |     line.chars().next().is_some_and(|c| c.is_uppercase())\n   |          ^^^^^ method not found in `&[u8]`\n\n",
+     "spans": [
+      {
+       "ls": 13,
+       "le": 13,
+       "cs": 10,
+       "ce": 15,
+       "primary": true,
+       "label": "method not found in `&[u8]`"
+      }
+     ]
+    },
+    {
+     "level": "error",
+     "code": null,
+     "message": "aborting due to 1 previous error",
+     "rendered": "error: aborting due to 1 previous error\n\n",
+     "spans": []
+    },
+    {
+     "level": "failure-note",
+     "code": null,
+     "message": "For more information about this error, try `rustc --explain E0599`.",
+     "rendered": "For more information about this error, try `rustc --explain E0599`.\n",
+     "spans": []
+    }
+   ],
+   "exit": 1,
+   "timed_out": false,
+   "source_sha1": "0536fb6ab8746ce5c188cb5c7a33c654feed2b9c"
+  }
+ }
+}
