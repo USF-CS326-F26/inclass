@@ -129,11 +129,12 @@ cat .cargo/config.toml Cargo.toml
 **2. Compile, showing rustc's real command lines.**
 
 ```sh
-touch src/bin/01_registers.rs
+touch src/lib.rs src/bin/01_registers.rs
 cargo build -v --bin 01_registers
 ```
 
-There are two `rustc` runs: `--crate-name week06 src/lib.rs`, the runtime,
+Touching both makes cargo rebuild both; touch only the program and the runtime
+shows as `Fresh`. There are two `rustc` runs: `--crate-name week06 src/lib.rs`, the runtime,
 then `--crate-name 01_registers src/bin/01_registers.rs`. In the second,
 point at `--target riscv64gc-unknown-none-elf`,
 `--extern week06=…/libweek06-….rlib`, `-C opt-level=1 -C panic=abort` and
@@ -200,7 +201,7 @@ line with `-kernel $E/13_the_panic_handler`, and `echo $?` prints `1`.
 ```sh
 qemu-system-riscv64 -machine virt -bios none -m 128M -smp 1 -nographic -serial mon:stdio \
   -d in_asm -D qemu.log -kernel $E/01_registers
-grep '^0x' qemu.log | head -12
+grep '^0x' qemu.log | head -13
 ```
 
 The machine from reset, in order:
