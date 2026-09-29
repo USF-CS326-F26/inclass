@@ -1,7 +1,7 @@
 # Week 03 in class — Structs, enums, and the tables that hold them
 
-Companion material for L04 (September 3) and L05 (September 8, 2026). The
-lecture pages on the course site make the arguments; this material is the part
+Companion material for the [Week 3 lecture](https://cs326-f26.cs.usfca.edu/lectures/03-cs326-2026-09-08-structs-enums-and-match/) (September 8, 2026). The
+lecture page on the course site makes the arguments; this material is the part
 you *run* on screen while students run it too. Two exercises come due this
 week — `04r_structs_impl` on Thursday and `05r_enums_match` on Friday — and the
 first three parts of the session are aimed squarely at them.

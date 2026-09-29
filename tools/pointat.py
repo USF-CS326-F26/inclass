@@ -146,7 +146,7 @@ def _scan_attr(src: str, i: int) -> int:
 
 
 def lex(src: str) -> list:
-    """Tokens worth colouring, as (start, end, class), in order.
+    """Tokens worth coloring, as (start, end, class), in order.
 
     Classes: c comment, d doc comment, s string, ch char, lt lifetime,
     n number or true/false, a attribute, m macro, k keyword, t type,
@@ -291,7 +291,7 @@ def statement_head(mask: str, i: int) -> str:
     the previous `;`, `{`, `}`, `(` or `[` that is not nested inside a group in
     between.  A `}` closing a struct literal inside `[...]` is part of the head,
     and so is one closing a struct pattern (`for Foo { a } in`, `if let Foo { a }
-    =`, `Foo { a } =>`), recognised by what follows it."""
+    =`, `Foo { a } =>`), recognized by what follows it."""
     depth, j = 0, i - 1
     while j >= 0:
         ch = mask[j]
@@ -1877,7 +1877,7 @@ def render_index(week: str, topic: str, programs: list, brokens: list, ids: dict
     return f"""<section id="index" class="index">
 <h1>Week {esc(n)} &middot; {esc(topic)}</h1>
 <p class="lede">Every program in <code>examples/src/bin/</code> beside the output it printed, and every
-file in <code>examples/broken/</code> beside what <code>rustc</code> said about it. Each coloured,
+file in <code>examples/broken/</code> beside what <code>rustc</code> said about it. Each colored,
 numbered section of code sits in the same row as the output it produced. Click an output line to light
 up the <code>println!</code> that printed it, or click a <code>println!</code> to find its output.
 Click a section's number to copy a link straight to that section, to paste where students will

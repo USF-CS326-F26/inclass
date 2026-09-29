@@ -122,7 +122,7 @@ grid is replaced by an editor on the left and a fresh output pane on the right.
 Change a line, press <kbd>&#8984;</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd>, and
 the program is compiled and run for real.
 
-- **Section bands, not line links.** The editor's gutter keeps the coloured,
+- **Section bands, not line links.** The editor's gutter keeps the colored,
   numbered section stripes and the fresh output is grouped into the same
   sections, so the two sides still line up. Per-line links are not drawn for a
   fresh run: they are only as good as the mapping, and the mapping is only

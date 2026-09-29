@@ -1,7 +1,7 @@
 # Week 04 in class — Collections, traits, and errors as values
 
-Companion material for L06 (September 10) and L07 (September 15, 2026). The
-lecture pages on the course site make the arguments; this material is the part
+Companion material for the [Week 4 lecture](https://cs326-f26.cs.usfca.edu/lectures/04-cs326-2026-09-15-collections-traits-errors-and-echo/) (September 15, 2026). The
+lecture page on the course site makes the arguments; this material is the part
 you *run* on screen while students run it too. Four exercises come due this
 week — `06r_collections` and `07r_traits` on Thursday, `08r_errors` and
 `10c_echo` on Friday — and each of the four parts of the session is aimed at
@@ -127,7 +127,7 @@ to "when do I actually need `dyn`?" -- one argv-driven choice dispatched
 three ways, with the addresses of the monomorphized copies printed -- for a
 review session, office hours, or the student who asks.
 `14_generic_struct_and_guard` is extra in the same way: the generic
-*struct* that L06 never shows, and the `SpinLock<T>` with a guard that
+*struct* that the Week 4 lecture never shows, and the `SpinLock<T>` with a guard that
 `37k_spinlocks` hands over on October 29 for you to fill in.
 
 Cut first if you are short on time, in this order: slides 44–46 (the ceremony
@@ -223,7 +223,7 @@ whole point of the façade.
 
 `oslings` exercises `06r_collections` and `07r_traits` (Thursday), then
 `08r_errors` and `10c_echo` (Friday). Then the commands: `11c_cat` (Thursday,
-September 24) is the read loop from L07 made executable, and `12c_wc`,
+September 24) is the read loop from the [Week 5 lecture](https://cs326-f26.cs.usfca.edu/lectures/05-cs326-2026-09-22-cat-wc-and-grep/#11c-short-read) made executable, and `12c_wc`,
 `13c_grep`, and the extra-credit `14c_head` (Friday, September 25) are the same
 skeleton with O(1) state, a byte search, and an early stop — all written with
 this week's `&[u8]`, `write_all`, and `let _ =`. On October 1 `20a_asm_bridge`

@@ -96,7 +96,7 @@ fn main() {
     println!("halts the machine. A user program that can panic the kernel with");
     println!("one bad system-call argument owns a denial of service. Check");
     println!("where the number ENTERS, once, and index freely after that.");
-    println!("In C the missing check reads into a neighbouring process.");
+    println!("In C the missing check reads into a neighboring process.");
     println!("\n**RUN** ../examples/show-errors.sh e0080");
 }
 

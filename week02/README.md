@@ -1,7 +1,7 @@
 # Week 02 in class — Rust types, ownership, and borrowing
 
-Companion material for L03 (September 1, 2026). The lecture deck on the course
-site makes the argument; this material is the part you *run* on screen while
+Companion material for the [Week 2 lecture](https://cs326-f26.cs.usfca.edu/lectures/02-cs326-2026-09-01-ownership-and-borrowing/) (September 1, 2026). The
+lecture page and deck on the course site make the argument; this material is the part you *run* on screen while
 students run it too.
 
 ```

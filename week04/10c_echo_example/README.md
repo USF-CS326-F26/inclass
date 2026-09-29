@@ -101,7 +101,7 @@ bare `write` does on that console: `Ok(3)`, and silence.
    students actually write.
 3. **`write` returns a count, and a harness that never short-writes is lying
    to you kindly.** `buf = &buf[n..]` is the whole of `write_all`, and it is
-   the loop L07 spent a section on. Show the count first, then the loop.
+   the loop the [Week 4 lecture](https://cs326-f26.cs.usfca.edu/lectures/04-cs326-2026-09-15-collections-traits-errors-and-echo/#10c-write-all) spends a section on. Show the count first, then the loop.
 4. **The `Result` from `write_all` is the one you may discard, and `let _ =`
    is how you say so.** A command returning `i32` has no `Err` to return, so
    `?` is E0277 there — the boundary from 08r, seen from the user side.
