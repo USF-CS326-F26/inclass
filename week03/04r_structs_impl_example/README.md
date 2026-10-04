@@ -106,7 +106,9 @@ because that is where the guard's owner stopped existing.
    difference between a guard and a bug. Show the nesting demo.
 4. **`Copy` and `Drop` are mutually exclusive, and that is the double free
    again.** `DevNo` derives `Copy` and has no `Drop`; `IntrGuard` has a `Drop`
-   and can never be `Copy`. Try adding the derive on screen and read E0184.
+   and can never be `Copy`. Try adding the derive on screen: rustc stops at
+   the field with E0204, because `cpu` is a `&mut` and an exclusive borrow
+   cannot be copied. A `Drop` type whose fields are all `Copy` gets E0184.
 
 ## Live variations, if there is time
 
@@ -122,4 +124,5 @@ because that is where the guard's owner stopped existing.
   `a_guard_restores_the_state_it_found_not_a_guess` goes red — because it is
   the only one that starts with interrupts already off. Ask what the other ten
   were failing to notice.
-- Add `#[derive(Clone, Copy)]` to `IntrGuard` and read E0184 together.
+- Add `#[derive(Clone, Copy)]` to `IntrGuard` and read E0204 together (the
+  `&mut Cpu` field); drop that field to see E0184, the destructor rule.

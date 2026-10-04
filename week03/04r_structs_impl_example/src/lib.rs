@@ -268,7 +268,10 @@ impl Drop for IntrGuard<'_> {
     ///   `Copy` says "duplicating the bits duplicates the value"; `Drop` says
     ///   "release runs exactly once". Allow both and interrupts come back on
     ///   once per copy, in the middle of the critical section that turned them
-    ///   off. `rustc` says so directly: `error[E0184]`.
+    ///   off. Try the derive and `rustc` stops one step earlier, at the
+    ///   field: `error[E0204]`, because `cpu` is a `&mut`, and an exclusive
+    ///   borrow cannot be copied either. A `Drop` type whose fields are all
+    ///   `Copy` meets the destructor rule itself: `error[E0184]`.
     fn drop(&mut self) {
         self.cpu.depth -= 1;
         self.cpu.intr_on = self.was_on;
